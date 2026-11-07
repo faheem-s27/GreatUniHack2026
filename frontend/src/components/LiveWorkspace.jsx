@@ -1,10 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 const PdfReader = lazy(() => import('./PdfReader'))
-import { demoCaption, findLecture, languages, loadLectureData, requestRecording, saveChat, saveLostPoint, saveSession, updatePoint } from '../data/lecture'
+import { demoCaption, findLecture, languages, loadLectureData, requestRecording, saveLostPoint, saveSession, updatePoint } from '../data/lecture'
 import './LiveWorkspace.css'
 import LostMoments from './LostMoments'
+import CoachList from './CoachList'
+import CoachPanel from './CoachPanel'
+import './Coach.css'
 
-export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture, onRecordingChange, coachActive, momentScope, onCoachChange, onCountChange }) {
+export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture, onRecordingChange, coachActive, momentScope, onModule, onCoachChange, onCountChange }) {
   const [data, setData] = useState({ sessions: [], points: [], chats: {}, modules: [], lectures: [] })
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
@@ -19,8 +22,8 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
   const [selectedCaption, setSelectedCaption] = useState(null)
   const [point, setPoint] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [chatInput, setChatInput] = useState('')
-  const [chatBusy, setChatBusy] = useState(false)
+  const [coachEntry, setCoachEntry] = useState(0)
+  const [coachPage, setCoachPage] = useState(null)
   const [pendingPoint, setPendingPoint] = useState(null)
   const session = useRef(null)
   const pageRef = useRef(1)
@@ -29,7 +32,7 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
   const queue = useRef(Promise.resolve())
   const currentId = lecture?.lectureId
   const viewingPage = pages[currentId] || 1
-  const pdfPage = view === 'coach' && coachActive && point?.lectureId === currentId ? point.page : viewingPage
+  const pdfPage = view === 'coach' && coachActive && point?.lectureId === currentId ? (coachPage?.pointId === point.id && coachPage.lectureId === currentId ? coachPage.page : point.page) : viewingPage
   useEffect(() => { pageRef.current = pdfPage }, [pdfPage])
   const reload = useCallback(async () => {
     try { setData(await loadLectureData()); setLoaded(true); setReadError('') } catch (err) { setReadError(err.message) }
@@ -40,7 +43,7 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
     return () => { cancelled = true }
   }, [])
   useEffect(() => {
-    if (view !== 'moments') return
+    if (!['moments', 'coach'].includes(view)) return
     let cancelled = false
     loadLectureData().then(value => { if (!cancelled) { setData(value); setLoaded(true); setReadError('') } }).catch(err => { if (!cancelled) setReadError(err.message) })
     return () => { cancelled = true }
@@ -112,41 +115,36 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
     try {
       const saved = await saveLostPoint(draft)
       setData(previous => ({ ...previous, points: [saved, ...previous.points.filter(item => item.id !== saved.id)] }))
-      setPoint(saved); setPendingPoint(null); onCoachChange(true); onNavigate('coach')
+      setPoint(saved); setCoachEntry(value => value + 1); setPendingPoint(null); onCoachChange(true); onNavigate('coach')
     } catch (err) { setError(`${err.message} Lost Point was not saved. Retry keeps the original page and subtitle context.`) }
     finally { setSaving(false); pointLock.current = false }
   }
   async function explore(item) {
     if (lock.current && item.lectureId !== currentId) throw new Error('Stop the current recording or subtitle demo before opening another lecture.')
     const target = await findLecture(item.moduleId, item.lectureId)
-    onOpenLecture(target); setPoint(item); onCoachChange(true); onNavigate('coach'); setError('')
+    onOpenLecture(target); setPoint(item); setCoachEntry(value => value + 1); onCoachChange(true); onNavigate('coach'); setError('')
   }
   async function toggle(item) {
     const next = { ...item, resolved: !item.resolved }
     await updatePoint(next)
     setData(previous => ({ ...previous, points: previous.points.map(value => value.id === next.id ? next : value) }))
   }
-  async function send(event) {
-    event.preventDefault(); if (!chatInput.trim() || chatBusy) return
-    setChatBusy(true)
-    const messages = [...(data.chats[point.chatId] || []), { id: crypto.randomUUID(), text: chatInput.trim(), from: 'you' }, { id: crypto.randomUUID(), text: 'Saved as a local note. AI coaching is not connected; revisit the PDF and the subtitle context above.', from: 'coach' }]
-    try { await saveChat(point.chatId, messages); setData(previous => ({ ...previous, chats: { ...previous.chats, [point.chatId]: messages } })); setChatInput('') } catch (err) { setError(err.message) }
-    finally { setChatBusy(false) }
-  }
   const live = view === 'lecture' && lecture
-  const coaching = view === 'coach' && coachActive && point && point.lectureId === currentId && lecture
+  const coachPoint = data.points.find(item => item.id === point?.id) || point
+  const coaching = view === 'coach' && coachActive && coachPoint && coachPoint.lectureId === currentId && lecture
   return <div className="lp-workspace">
     {status === 'Subtitle demo running' && !live && <div className="lp-session-banner" role="status">Subtitle demo continues · {lecture?.moduleName} / {lecture?.title}<button onClick={stop}>Stop subtitle demo</button><button onClick={() => onNavigate('lecture')}>Return to Live Lecture</button></div>}
     {readError && view !== 'moments' && <div className="module-error" role="alert">{readError}<button onClick={reload}>Retry loading saved records</button></div>}
     {error && view !== 'moments' && <div role="alert" className="module-error">{error}{!loaded && <button onClick={reload}>Retry loading saved sessions</button>}</div>}
-    {(live || coaching) && <>
-      <div className="lp-heading"><p>{lecture.moduleName} / {lecture.fileName}</p><h1>{coaching ? 'My Coach' : 'Live Lecture'}</h1><span className="local-label"><span>Local demo</span> Saved on this device · No server or AI connection</span></div>
-      {coaching && <section className="lp-context"><h2>Lost Point · Page {point.page}</h2><p>{point.lectureTitle} · {new Date(point.createdAt).toLocaleString()}</p><p>Chat ID: <code>{point.chatId}</code></p>{point.captionTime && <p>Selected subtitle: {new Date(point.captionTime).toLocaleTimeString()}</p>}{point.context.length ? point.context.map(item => <blockquote key={item.id}>{item.translations[point.language]}<small>{item.original} · Page {item.page} · {new Date(item.time).toLocaleTimeString()}</small></blockquote>) : <p>No subtitle context was selected for this page.</p>}<button className="module-secondary" onClick={() => onNavigate('moments')}>Back to Lost Moments</button> <button className="module-secondary" onClick={() => onNavigate('lecture')}>Return to Live Lecture · page {viewingPage}</button></section>}
+    {live && <>
+      <div className="lp-heading"><p>{lecture.moduleName} / {lecture.fileName}</p><h1>Live Lecture</h1><span className="local-label"><span>Local demo</span> Saved on this device · No server or AI connection</span></div>
       {live && <section className="lp-control card"><div><label htmlFor="subtitle-language">Native language</label><select id="subtitle-language" value={language} onChange={event => setLanguage(event.target.value)}>{Object.entries(languages).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div><label className="lp-check"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)}/>I confirm I have permission to transcribe this lecture.</label><div className="lp-record-buttons"><button className="module-secondary" disabled={!consent || isActive || !loaded || !pageCounts[currentId]} onClick={() => start(false)}>Start recording</button><button className="module-secondary" disabled={status !== 'Subtitle demo running'} onClick={stop}>Stop</button><span role="status">{status}</span><button className="lp-lost" disabled={saving || !loaded || !pageCounts[currentId]} onClick={lost}>{saving ? 'Saving Lost Point…' : pendingPoint?.lectureId === currentId ? 'Retry I’m lost' : 'I’m lost'}</button></div><label className="lp-check"><input type="checkbox" checked={demo} disabled={isActive} onChange={event => setDemo(event.target.checked)}/>Enable subtitle demo — preset text, no microphone, no translation service</label>{demo && <button className="module-secondary" disabled={!consent || isActive || !loaded || !pageCounts[currentId]} onClick={() => start(true)}>Start subtitle demo</button>}<p className="lp-note">No speech/translation API is configured. Recording cannot connect. Demo subtitles are fictional and unrelated to this PDF.</p></section>}
-      <Suspense fallback={<p role="status">Loading PDF reader…</p>}><PdfReader key={`${currentId}-${coaching ? point.id : 'live'}`} lecture={lecture} readOnly={!!coaching} page={pdfPage} onPage={coaching ? () => {} : changePage} onReady={ready}/></Suspense>
+      <Suspense fallback={<p role="status">Loading PDF reader…</p>}><PdfReader key={currentId} lecture={lecture} page={viewingPage} onPage={changePage} onReady={ready}/></Suspense>
       {live && <><section className="lp-captions card" aria-labelledby="current-caption"><div className="lp-section-head"><h2 id="current-caption">{reviewing ? 'Selected subtitle' : 'Current subtitle'}</h2><button className="module-secondary" onClick={() => { const current = sessions.find(item => item.id === session.current?.id) || sessions[0]; setHistoryId(current?.id || ''); setSelectedCaption(null); if (current?.captions.length) changePage(current.captions.at(-1).page) }}>Back to live</button></div><p className="lp-note">Viewing page {viewingPage} · Caption recorded on student page {caption?.page || '—'}. No teacher page synchronization.</p>{caption ? <><p className="lp-translation">{caption.translations[language]}</p><p lang="en">Original: {caption.original}</p><small>{new Date(caption.time).toLocaleTimeString()} · Preset demo subtitle</small></> : <p>No subtitles yet. Enable and start subtitle demo to try this workflow.</p>}</section><section className="lp-history card"><h2>Subtitle History</h2><label htmlFor="subtitle-session">Saved session</label><select id="subtitle-session" value={history?.id || ''} onChange={event => { setHistoryId(event.target.value); setSelectedCaption(null) }}><option value="">Select a session</option>{sessions.map(item => <option key={item.id} value={item.id}>{new Date(item.startedAt).toLocaleString()} · {item.id.slice(0, 8)} · {item.captions.length} captions · Local demo</option>)}</select><p className="lp-note">Saved in this browser only. Recording does not resume after a reload. Page numbers refer to the student’s viewed page at capture time.</p><div className="lp-history-list">{!history?.captions.length && <p>No saved subtitles in this session.</p>}{history?.captions.map(item => <button className={`lp-caption-row ${selectedCaption?.id === item.id ? 'selected' : ''}`} key={item.id} aria-pressed={selectedCaption?.id === item.id} onClick={() => { setSelectedCaption(item); changePage(item.page) }}><small>{new Date(item.time).toLocaleTimeString()} · Recorded student page {item.page}</small><strong>{item.translations[language]}</strong><span lang="en">{item.original}</span></button>)}</div></section></>}
-      {coaching && <section className="card chat-card lp-chat"><h2>Local coach notes</h2><p>Independent conversation for this Lost Point. Preset responses only; no AI connected.</p><div className="chat-messages">{(data.chats[point.chatId] || []).map(item => <div className={`message ${item.from}`} key={item.id}><span>{item.from === 'you' ? 'You' : 'Demo'}</span><p>{item.text}</p></div>)}</div><form className="chat-form" onSubmit={send}><label className="sr-only" htmlFor="point-note">Your note</label><input id="point-note" value={chatInput} onChange={event => setChatInput(event.target.value)}/><button disabled={chatBusy || !chatInput.trim()}>Save note</button></form></section>}
+
     </>}
+    {view === 'coach' && !coachActive && <CoachList data={data} loaded={loaded} error={readError} onRetry={reload} onExplore={explore} onModule={onModule}/>}
+    {coachPoint && lecture && coachPoint.lectureId === currentId && <CoachPanel key={coachPoint.chatId} active={!!coaching} entryKey={coachEntry} point={coachPoint} lecture={lecture} messages={data.chats[coachPoint.chatId] || []} onMessages={(id, messages) => setData(previous => ({ ...previous, chats: { ...previous.chats, [id]: messages } }))} onToggle={toggle} onNavigate={onNavigate} onList={() => onCoachChange(false)} onModule={onModule} onViewedPage={setCoachPage} onBackLecture={item => { setPages(previous => ({ ...previous, [item.lectureId]: item.page })); pageRef.current = item.page; onNavigate('lecture') }}/>}
     <LostMoments active={view === 'moments'} scope={momentScope} data={data} loaded={loaded} loadError={readError} onReload={reload} onExplore={explore} onToggle={toggle} onNavigate={onNavigate}/>
 
   </div>

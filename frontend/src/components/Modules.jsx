@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createModule, loadLibrary, saveLecture } from '../data/modules'
 const sizeLabel = size => size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`
-export default function Modules({ onOpen, onMoments }) {
+export default function Modules({ onOpen, onMoments, requestedModule }) {
   const [library, setLibrary] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [appliedEntry, setAppliedEntry] = useState(null)
   const [error, setError] = useState('')
   const [modalError, setModalError] = useState('')
   const [name, setName] = useState('')
@@ -21,6 +22,13 @@ export default function Modules({ onOpen, onMoments }) {
     try { setLibrary(await loadLibrary()); setError('') } catch (err) { setError(err.message) }
   }
   useEffect(() => { let cancelled = false; loadLibrary().then(value => { if (!cancelled) setLibrary(value) }).catch(err => { if (!cancelled) setError(err.message) }); const opened = urls.current; return () => { cancelled = true; opened.forEach(URL.revokeObjectURL) } }, [])
+  if (requestedModule !== appliedEntry) {
+    setAppliedEntry(requestedModule)
+    if (requestedModule?.moduleId) {
+      if (file || busy) setError('Remove or save your selected PDF before switching modules.')
+      else { setSelected(requestedModule.moduleId); setError('') }
+    }
+  }
   const module = library?.modules.find(item => item.id === selected)
   const lectures = library?.lectures.filter(item => item.moduleId === selected) || []
   function chooseModule(id) {

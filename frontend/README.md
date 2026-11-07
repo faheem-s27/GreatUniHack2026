@@ -102,3 +102,30 @@ selects that module and clears the lecture filter. Global navigation keeps the
 last filter selection. Missing PDF resources show a precise message and a
 My Modules recovery entry instead of opening another document. Empty libraries,
 empty filter results, read failures and status-save failures have distinct UI.
+
+## My Coach
+
+Global My Coach navigation now opens the course conversation list from the shared
+module/point data. Empty modules link back to their own slide list. I’m lost and
+Explore still open the existing point's `chatId` directly. No additional
+conversation IDs or backend fields replace existing IDs. The chat shows the real
+PDF next to messages, with a collapsible PDF on narrow screens. Reopening a point
+starts at its original page without resetting its messages. Reference-page state
+is separate from that original page. Back to lecture returns to the point's
+lecture/page and does not stop the existing subtitle demo.
+
+The backend still exposes no chat/teaching-mode/citation API. The explicit local
+adapter in `src/data/coach.js` stores user messages and preset responses atomically
+in the existing `pointChats` store. Each send has a stable message ID for retry;
+failed sends preserve the question. Current-page text can be extracted locally
+by PDF.js and quoted with a **local excerpt, not AI citation** label. These
+references use real resource IDs/pages and enforce the original module boundary.
+If extraction is unavailable, the demo explicitly cannot answer from the PDF.
+Saved historical subtitle context comes only from the Lost Point snapshot.
+No service mode (Guide/Explain/Locked), homework policy or unlocking is invented.
+
+The chat supports multiline input, IME-safe Enter sending, Shift+Enter line
+breaks, a latest-message action without forcing scroll while reading history,
+and shared self-marked Understood/Reopen state. Messages, PDFs, subtitles and
+learning records remain in this browser/origin only. No audio/chat server or
+AI connection has been added, and no server credentials are stored in code.
