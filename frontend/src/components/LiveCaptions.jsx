@@ -37,7 +37,7 @@ function CaptionLine({ caption, lang, rtl, showSlide }) {
   )
 }
 
-export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide }) {
+export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide, onCaptions }) {
   const [lang, setLang] = useState(readStoredLang)
   const [speakerMode, setSpeakerMode] = useState(false)
   const [testLine, setTestLine] = useState('')
@@ -62,6 +62,11 @@ export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide }
   useEffect(() => {
     if (info.isSpeaker && status === 'live') sendSlide(slideNumber)
   }, [slideNumber, info.isSpeaker, status, sendSlide])
+
+  // Let the page keep the latest lines, so "I'm lost" can save what was being said.
+  useEffect(() => {
+    onCaptions?.({ captions, lang })
+  }, [captions, lang, onCaptions])
 
   useEffect(() => {
     const el = feedRef.current

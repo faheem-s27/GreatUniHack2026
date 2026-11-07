@@ -1,5 +1,8 @@
-// Explicit local demo adapter. No module/upload API exists in the backend yet.
-export const dataMode = 'local-demo'
+// Modules and lecture PDFs are kept in this browser (IndexedDB) so they open
+// instantly and work offline. Each PDF is also sent to the server, which reads
+// its text so the coach can search it and cite its slides.
+import { uploadLecturePdf } from './api'
+
 let database
 function db() {
   if (!database) database = new Promise((resolve, reject) => {
@@ -37,14 +40,35 @@ export const createModule = (name) => transaction(state => {
   state.modules.push(module)
   return module
 })
-export async function saveLecture(moduleId, title, file) {
+export async function saveLecture(moduleId, title, file, { assessed = false } = {}) {
   if (!file || !/\.pdf$/i.test(file.name) || (file.type && file.type !== 'application/pdf')) throw new Error('Choose a PDF file.')
   if (!file.size || !(await file.slice(0, 1024).text()).includes('%PDF-')) throw new Error('This file does not contain a valid PDF header. Choose another PDF.')
   if (!title.trim()) throw new Error('Enter a lecture title.')
   return transaction(state => {
     if (!state.modules.some(item => item.id === moduleId)) throw new Error('Module no longer exists. Reload and retry.')
-    const lecture = { id: crypto.randomUUID(), moduleId, title: title.trim(), fileName: file.name, size: file.size, addedAt: new Date().toISOString(), blob: file }
+    const lecture = { id: crypto.randomUUID(), moduleId, title: title.trim(), fileName: file.name, size: file.size, addedAt: new Date().toISOString(), blob: file, assessed }
     state.lectures.push(lecture)
     return lecture
+  }).then(lecture => connectLecture(lecture.id))
+}
+
+// Send a saved PDF to the server so the coach can read it. Safe to retry.
+export async function connectLecture(lectureId) {
+  const state = await loadLibrary()
+  const lecture = state.lectures.find(item => item.id === lectureId)
+  if (!lecture?.blob) throw new Error('This PDF is no longer on this device. Upload it again.')
+  if (lecture.serverId) return lecture
+  const module = state.modules.find(item => item.id === lecture.moduleId)
+  let update
+  try {
+    const result = await uploadLecturePdf({ moduleId: lecture.moduleId, moduleName: module?.name || 'Module', title: lecture.title, file: lecture.blob, assessed: !!lecture.assessed })
+    update = { serverId: result.lecture_id, readableSlides: result.slides_with_text, serverError: null }
+  } catch (error) {
+    update = { serverError: error.message }
+  }
+  return transaction(next => {
+    const item = next.lectures.find(value => value.id === lectureId)
+    if (item) Object.assign(item, update)
+    return item
   })
 }

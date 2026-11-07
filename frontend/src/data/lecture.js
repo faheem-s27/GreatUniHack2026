@@ -1,55 +1,42 @@
+import { saveLostMoment, setLostMomentResolved } from './api'
 import { loadLibrary, transaction } from './modules'
-// Local browser records only. No speech/translation/chat API is defined yet.
-export const languages = { zh: '中文', en: 'English', es: 'Español', fr: 'Français' }
-const lines = [
-  { en: 'Let us look at the main idea on this page.', zh: '我们来看这一页的主要概念。', es: 'Veamos la idea principal de esta página.', fr: 'Examinons l’idée principale de cette page.' },
-  { en: 'Which part of this example needs a closer look?', zh: '这个例子的哪一部分需要进一步说明？', es: '¿Qué parte del ejemplo necesita más explicación?', fr: 'Quelle partie de cet exemple faut-il approfondir ?' },
-  { en: 'Take a moment to connect this idea to the previous example.', zh: '花一点时间，将这个概念与前一个例子联系起来。', es: 'Relaciona esta idea con el ejemplo anterior.', fr: 'Reliez cette idée à l’exemple précédent.' },
-]
-export const demoCaption = index => lines[index % lines.length]
+// Lost Points and coach conversations are kept in this browser. Each Lost Point
+// is also sent to the server (page number only), which counts them for the
+// lecturer heatmap. Live captions come from the captions socket and are never stored.
+
 export async function loadLectureData() {
   const state = await loadLibrary()
-  return { sessions: state.subtitleSessions || [], points: state.lostPoints || [], chats: state.pointChats || {}, modules: state.modules, lectures: state.lectures.map(({ id, moduleId, title, blob }) => ({ id, moduleId, title, available: !!blob })) }
+  return { sessions: state.subtitleSessions || [], points: state.lostPoints || [], chats: state.pointChats || {}, modules: state.modules, lectures: state.lectures.map(({ id, moduleId, title, blob, serverId }) => ({ id, moduleId, title, available: !!blob, serverId })) }
 }
-export const saveSession = session => transaction(state => {
-  const items = state.subtitleSessions ||= []
-  const index = items.findIndex(item => item.id === session.id)
-  if (index < 0) items.push(session)
-  else items[index] = session
-  return session
-})
-export const saveLostPoint = point => transaction(state => {
-  const items = state.lostPoints ||= []
-  const existing = items.find(item => item.id === point.id)
-  if (existing) return existing
-  items.unshift(point)
-  state.pointChats ||= {}
-  state.pointChats[point.chatId] = []
-  return point
-})
-export const updatePoint = point => transaction(state => {
-  const index = (state.lostPoints || []).findIndex(item => item.id === point.id)
-  if (index < 0) throw new Error('Lost Point was not found. Reload and retry.')
-  state.lostPoints[index] = point
-})
+export async function saveLostPoint(point) {
+  const saved = await transaction(state => {
+    const items = state.lostPoints ||= []
+    const existing = items.find(item => item.id === point.id)
+    if (existing) return existing
+    items.unshift(point)
+    state.pointChats ||= {}
+    state.pointChats[point.chatId] = []
+    return point
+  })
+  // Count it for the lecturer heatmap. A failure here never loses the Lost Point.
+  if (point.serverLectureId) saveLostMoment({ id: point.id, lectureId: point.serverLectureId, slideNumber: point.page, topic: point.lectureTitle }).catch(() => {})
+  return saved
+}
+export async function updatePoint(point) {
+  await transaction(state => {
+    const index = (state.lostPoints || []).findIndex(item => item.id === point.id)
+    if (index < 0) throw new Error('This Lost Point was not found. Reload the page and try again.')
+    state.lostPoints[index] = point
+  })
+  if (point.serverLectureId) setLostMomentResolved(point.id, point.resolved).catch(() => {})
+}
 export const saveChat = (id, messages) => transaction(state => { state.pointChats ||= {}; state.pointChats[id] = messages })
 export async function findLecture(moduleId, lectureId) {
   const state = await loadLibrary()
   const lecture = state.lectures.find(item => item.id === lectureId && item.moduleId === moduleId)
-  if (!lecture?.blob) throw new Error('PDF unavailable on this device. Return to My Modules and select it again.')
+  if (!lecture?.blob) throw new Error('This PDF is no longer on this device. Upload it again in My Modules.')
   return { ...lecture, lectureId, moduleName: state.modules.find(item => item.id === moduleId)?.name || 'Module' }
 }
-export async function requestRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone unavailable. Use HTTPS and a supported browser.')
-  let stream
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
-  catch (error) {
-    throw new Error(error.name === 'NotAllowedError' ? 'Microphone permission denied. Allow microphone access in browser settings and retry.' : 'Microphone unavailable. Check your device and retry.', { cause: error })
-  }
-  stream.getTracks().forEach(track => track.stop())
-  throw new Error('Connection failed: no speech or translation service is configured. Microphone released; no audio was saved or sent. You can explicitly enable subtitle demo instead.')
-}
-
 export function readMomentFilters() {
   try {
     const saved = JSON.parse(localStorage.getItem('lostpoint-moment-filters') || '{}')
