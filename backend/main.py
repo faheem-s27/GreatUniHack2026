@@ -15,6 +15,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
+import lostpoint.db as canvas_db
+
 from accounts import router as accounts_router
 from captions import router as captions_router
 from coach_store import router as coach_router
@@ -27,6 +29,10 @@ from handoffs import router as handoffs_router
 from ingest import router as ingest_router
 from insights import router as insights_router
 from live import router as live_router
+from lostpoint.app import canvas_error_handler
+from lostpoint.canvas import CanvasError
+from lostpoint.routes_auth import router as canvas_auth_router
+from lostpoint.routes_canvas import router as canvas_router
 from lost_moments import router as lost_moments_router
 from memory import router as memory_router
 
@@ -39,6 +45,8 @@ log = logging.getLogger("lostpoint")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    canvas_db.init_db()  # Canvas login sessions (Jamie's lostpoint package)
+    canvas_db.purge_expired()
     log.info("LostPoint %s started, database %s, search %s", VERSION, settings().db_path, settings().search)
     yield
 
@@ -74,6 +82,9 @@ async def http_error(_request: Request, exc: HTTPException):
     return JSONResponse({"detail": exc.detail, "status": exc.status_code}, status_code=exc.status_code, headers=exc.headers)
 
 
+app.add_exception_handler(CanvasError, canvas_error_handler)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(_request: Request, exc: RequestValidationError):
     errors = [{"field": ".".join(str(p) for p in e["loc"][1:]), "message": e["msg"]} for e in exc.errors()]
@@ -83,7 +94,8 @@ async def validation_error(_request: Request, exc: RequestValidationError):
 
 
 for router in (accounts_router, lost_moments_router, courses_router, ingest_router, coursework_router, memory_router,
-               coach_router, insights_router, handoffs_router, events_router, live_router, captions_router):
+               coach_router, insights_router, handoffs_router, events_router, live_router, captions_router,
+               canvas_auth_router, canvas_router):
     app.include_router(router)
 
 

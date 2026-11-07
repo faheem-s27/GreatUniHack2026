@@ -39,6 +39,11 @@ Open the Vite URL printed in the terminal. The backend health endpoint is at `ht
 - **Lost moments page** shows the student's own moments with photo thumbnails; "Mark understood" is saved to the server.
 - **Lecture insights** reads the live heatmap: distinct students lost per slide, with slides under 5 students hidden by the server. Falls back to sample data if the backend is down.
 
+- A responsive demo lecture, slide navigation, and an “I'm lost” button. Saved moments are stored in the browser's local storage and can be marked understood.
+- A demo coach with preset responses and a lecturer insights preview with sample data.
+- A FastAPI backend with Canvas OAuth login, a SQLite-backed session store, and endpoints for enrolled courses, modules, and proxied PDF slides.
+- A one-command local Canvas LMS setup (`./scripts/setup-canvas.sh`) that also provisions the OAuth developer key, demo student, and backend `.env`.
+
 ### Lost-moment API (`backend/lost_moments.py`)
 
 | Method | Path | Purpose |
@@ -151,6 +156,50 @@ docker compose up --build
 ```
 
 All settings are environment variables, listed in `backend/config.py` and `.env.example`. `GET /api/health` checks the database and is used as the container health check. Every error response has the same shape, `{"detail": "...", "status": 404}`. Validation errors add `errors: [{field, message}]`.
+
+## Canvas slides backend
+
+The backend lets a student sign in with their Canvas account and read the PDF
+slides attached to each course module:
+
+```sh
+./scripts/setup-canvas.sh          # Canvas + OAuth key + demo student + backend/.env
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn main:app --reload
+```
+
+With the Vite dev server running, visit
+`http://localhost:5173/api/auth/canvas/login` and sign in as
+`student@lostpoint.local` / `lostpoint-student`. Vite proxies the callback to
+the backend.
+
+To run the backend without the frontend, set
+`CANVAS_REDIRECT_URI=http://localhost:8000/api/auth/canvas/callback` in
+`backend/.env` and visit `http://127.0.0.1:8000/api/auth/canvas/login` instead.
+Both redirect URIs are registered on the developer key.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | Service health |
+| `GET` | `/api/auth/canvas/login` | Start Canvas OAuth |
+| `GET` | `/api/auth/canvas/callback` | OAuth callback |
+| `GET` | `/api/auth/canvas/me` | Current Canvas user |
+| `POST` | `/api/auth/canvas/logout` | End the session |
+| `GET` | `/api/canvas/courses` | Active enrolled courses |
+| `GET` | `/api/canvas/courses/{id}/modules` | Modules with PDF slides |
+| `GET` | `/api/canvas/files/{id}/content` | Proxied PDF for iframe rendering |
+
+The Canvas access token stays server-side in SQLite; the browser only receives a
+signed, HttpOnly session cookie. See [docs/canvas-local.md](docs/canvas-local.md)
+for the full setup and troubleshooting guide.
+
+## Local Canvas LMS
+
+The Canvas integration is developed against a self-hosted, open-source Canvas
+instance. See [docs/canvas-local.md](docs/canvas-local.md) and run
+`./scripts/setup-canvas.sh` to bootstrap it.
 
 ## Useful commands
 
