@@ -1,0 +1,22 @@
+.sidebar .brand {
+  display: block;
+  padding: 0;
+}
+
+.brand-logo-frame {
+  display: block;
+  width: 150px;
+  height: 110px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.brand-logo {
+  display: block;
+  width: 150px;
+  height: 150px;
+  max-width: none;
+  transform: translateY(-16px);
+}
+
+.brand + .nav-label { margin-top: 26px; }

@@ -1,0 +1,125 @@
+/* LostPoint theme: the colours of Stephanie's bee logo, applied across every
+   screen (the older green demo styles and JC's purple components alike).
+   Loaded last, so it wins over App.css and the component styles. */
+:root {
+  --lp-purple: #46166f;      /* "Lost" in the logo */
+  --lp-violet: #692a8d;      /* buttons and links */
+  --lp-violet-dark: #542171;
+  --lp-lavender: #b98be0;    /* the skyline */
+  --lp-lilac: #efe7f5;
+  --lp-mist: #faf8fc;
+  --lp-yellow: #f9c03a;      /* "Point" in the logo */
+  --lp-bee: #fdd72b;
+  --lp-ink: #25212b;
+  --lp-muted: #665d6d;
+  --lp-line: #e8e1ed;
+  color: var(--lp-ink);
+  background: var(--lp-mist);
+}
+body { background: var(--lp-mist); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--lp-yellow); outline-offset: 2px; }
+
+/* One typeface everywhere: DM Sans for text, DM Serif Display for page titles */
+.lp-workspace, .modules-page, .lecture-insights, .coach-list, .coach-panel, .lm-page { font-family: 'DM Sans', sans-serif; }
+.lp-workspace h1, .modules-page h1, .lecture-insights h1, .coach-list h1, .coach-panel h1, .lm-page h1, .module-guidance h1 {
+  font: 400 34px/1.15 'DM Serif Display', serif; letter-spacing: -.5px; color: var(--lp-purple);
+}
+.lp-workspace h2 { font-family: 'DM Sans', sans-serif; }
+
+/* Sidebar with the logo */
+.sidebar { background: #fff; border-right-color: var(--lp-line); }
+.sidebar .brand { display: block; padding: 0; margin: 0 auto; }
+.brand-logo-frame { display: block; width: 168px; height: 118px; margin: 0 auto; overflow: hidden; }
+.brand-logo { display: block; width: 168px; height: 168px; max-width: none; transform: translateY(-24px); }
+.nav.active, .shared-sidebar .nav.active { background: var(--lp-lilac); color: var(--lp-violet); }
+.nav:hover:not(.active) { background: var(--lp-mist); color: var(--lp-violet); }
+.nav b, .shared-sidebar .nav b { background: var(--lp-yellow); color: var(--lp-ink); }
+.shared-sidebar .sidebar-bottom { font-size: 11px; line-height: 1.5; }
+
+/* Top bar */
+.topbar { background: #fff; border-bottom-color: var(--lp-line); }
+.topbar strong { color: var(--lp-purple); }
+.topbar-help { border: 1px solid var(--lp-line); background: var(--lp-mist); color: var(--lp-violet); border-radius: 20px; padding: 8px 14px; font-size: 12px; font-weight: 600; }
+.topbar-help:hover { background: var(--lp-lilac); }
+
+/* Buttons */
+.module-button { background: var(--lp-violet); border-color: var(--lp-violet); }
+.module-button:hover:not(:disabled) { background: var(--lp-violet-dark); }
+.module-secondary:hover:not(:disabled) { background: var(--lp-lilac); }
+.primary-button, .chat-form button { background: var(--lp-violet); }
+.primary-button:hover, .chat-form button:hover:not(:disabled) { background: var(--lp-violet-dark); }
+.link-button, .text-button { border: 0; background: none; padding: 0; color: var(--lp-violet); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+/* The demo lecture, formerly green */
+.eyebrow, .section-kicker { color: var(--lp-violet); }
+.page-heading h1, .secondary-page h1 { color: var(--lp-purple); }
+.page-heading h1 em, .accent { color: var(--lp-lavender); }
+.live-dot { background: var(--lp-yellow); }
+.slide { background: var(--lp-lilac); color: var(--lp-purple); }
+.slide-top, .slide-footer { color: var(--lp-lavender); }
+.slide p { color: var(--lp-muted); }
+.slide-chip { background: #fff; color: var(--lp-violet); }
+.subject-icon { background: var(--lp-lilac); color: var(--lp-violet); }
+.lost-card { background: #fffaf0; border-color: #f6e3b4; }
+.sparkle { color: var(--lp-yellow); }
+.lost-card .primary-button { background: var(--lp-bee); color: var(--lp-ink); border: 2px solid var(--lp-violet); }
+.lost-card .primary-button:hover { background: var(--lp-yellow); }
+.card { border-color: var(--lp-line); box-shadow: 0 4px 18px #46166f0d; }
+.message p { background: var(--lp-lilac); }
+.message.you p { background: #fff3cf; }
+.message span, .coach-avatar { color: var(--lp-violet); }
+.coach-avatar { background: var(--lp-lilac); }
+.guide-badge { background: var(--lp-lilac); color: var(--lp-violet); }
+.chat-success { color: var(--lp-violet); font-weight: 700; }
+
+/* Live Lecture: slides on the left, "I'm lost" and captions on the right */
+.lp-heading h1 { margin-bottom: 10px; }
+.lp-live-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+.lp-side { display: flex; flex-direction: column; gap: 18px; position: sticky; top: 18px; }
+.lp-lost-card { padding: 22px; background: #fffaf0; border-color: #f6e3b4; }
+.lp-lost-card h2 { font: 400 25px/1.2 'DM Serif Display', serif !important; color: var(--lp-purple); margin: 8px 0 !important; }
+.lp-lost-card p { color: var(--lp-muted); font-size: 13px; margin: 0 0 16px; }
+.lp-lost-card .lp-lost { width: 100%; margin: 0; font-size: 17px; background: var(--lp-bee); border-color: var(--lp-violet); }
+.lp-lost-card .lp-lost:hover:not(:disabled) { background: var(--lp-yellow); transform: translateY(-1px); }
+.lp-private { display: block; margin-top: 12px; color: var(--lp-muted); font-size: 11px; line-height: 1.5; }
+.lp-ready, .lp-not-ready { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; border-radius: 20px; padding: 5px 12px; }
+.lp-ready { background: #e9f6ec; color: #2f6b45; }
+.lp-not-ready { background: #fff4dc; color: #7a5600; }
+.lp-not-ready .module-secondary { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.lp-not-ready small { flex-basis: 100%; font-weight: 400; }
+.lecture-row .lp-ready, .lecture-row .lp-not-ready { margin: 8px 8px 8px 0; }
+.captions-card { padding: 20px; }
+.caption-slide { background: var(--lp-lilac); color: var(--lp-violet); }
+.caption-feed { background: var(--lp-mist); }
+.caption-main { color: var(--lp-ink); }
+.caption-test button { background: var(--lp-violet); }
+
+/* Coach */
+.coach-mode { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px; border-radius: 20px; padding: 4px 10px; margin: 6px 0; }
+.mode-guide { background: var(--lp-lilac); color: var(--lp-violet); }
+.mode-explain { background: #e9f6ec; color: #2f6b45; }
+.mode-locked { background: #fff4dc; color: #7a5600; }
+.coach-citations { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.citation { border: 1px solid var(--lp-lavender); background: #fff; color: var(--lp-violet); border-radius: 14px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
+.citation:hover { background: var(--lp-lilac); }
+.coach-win { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 700; color: var(--lp-purple); }
+.coach-message small { display: block; margin-top: 6px; color: var(--lp-muted); font-size: 11px; }
+.coach-message.student small { color: #e6d6f2; }
+.coach-composer textarea { border-color: var(--lp-lavender); }
+.coach-subtitles blockquote small { display: block; color: var(--lp-muted); margin-top: 4px; }
+
+/* Intros and insights */
+.lm-intro, .li-intro, .modules-intro, .coach-note { color: var(--lp-muted); max-width: 720px; }
+.li-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 20px; }
+.li-picker select { padding: 9px 10px; border: 1px solid var(--lp-lavender); border-radius: 8px; background: #fff; min-width: 260px; }
+.li-callout { background: #fff4dc; border-left: 4px solid var(--lp-yellow); border-radius: 6px; padding: 12px 16px; color: var(--lp-ink); }
+
+@media (max-width: 960px) {
+  .lp-live-layout { grid-template-columns: 1fr; }
+  .lp-side { position: static; }
+}
+@media (max-width: 620px) {
+  .brand-logo-frame { width: 120px; height: 84px; }
+  .brand-logo { width: 120px; height: 120px; transform: translateY(-17px); }
+  .topbar-help { display: none; }
+}

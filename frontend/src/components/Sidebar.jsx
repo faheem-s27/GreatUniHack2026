@@ -1,0 +1,6 @@
+import logo from '../assets/lostpoint.png'
+
+export default function Sidebar({ view, onNavigate, count }) {
+  const items = [['modules', '▦', 'My Modules'], ['lecture', '◉', 'Live Lecture'], ['moments', '⌁', 'Lost Moments'], ['coach', '✧', 'My Coach']]
+  return <aside className="sidebar shared-sidebar"><button className="brand" onClick={() => onNavigate('modules')} aria-label="LostPoint home"><span className="brand-logo-frame"><img className="brand-logo" src={logo} alt="LostPoint" /></span></button><nav aria-label="Main navigation"><div className="nav-label">STUDENT WORKSPACE</div>{items.map(([id, icon, label]) => <button key={id} className={`nav ${view === id || (id === 'lecture' && view === 'sample') ? 'active' : ''}`} aria-current={view === id ? 'page' : undefined} onClick={() => onNavigate(id)}><span aria-hidden="true">{icon}</span>{label}{id === 'moments' && <b>{count}</b>}</button>)}<div className="nav-label lecturer-label">FOR LECTURERS</div><button className={`nav ${view === 'insights' ? 'active' : ''}`} aria-current={view === 'insights' ? 'page' : undefined} onClick={() => onNavigate('insights')}><span aria-hidden="true">▥</span>Lecture Insights</button></nav><div className="sidebar-bottom">Your Lost Points stay private to you</div></aside>
+}
