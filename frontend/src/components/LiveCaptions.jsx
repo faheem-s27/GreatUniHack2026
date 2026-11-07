@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveCaptions } from '../hooks/useLiveCaptions'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
+import { useElevenLabsSpeech } from '../hooks/useElevenLabsSpeech'
 
 const LANG_KEY = 'lostpoint-caption-lang'
 const SPEAKER_KEY = import.meta.env.VITE_SPEAKER_KEY || ''
@@ -40,6 +41,7 @@ function CaptionLine({ caption, lang, rtl, showSlide }) {
 export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide, onCaptions }) {
   const [lang, setLang] = useState(readStoredLang)
   const [speakerMode, setSpeakerMode] = useState(false)
+  const [speechEngine, setSpeechEngine] = useState('browser')
   const [testLine, setTestLine] = useState('')
   const feedRef = useRef(null)
 
@@ -51,12 +53,20 @@ export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide, 
     onSlide: onLecturerSlide,
   })
 
-  const speech = useSpeechRecognition({
-    enabled: speakerMode && info.isSpeaker,
+  const speakerReady = speakerMode && info.isSpeaker && status === 'live'
+  const browserSpeech = useSpeechRecognition({
+    enabled: speakerReady && speechEngine === 'browser',
     lang: LECTURE_SPEECH_LANG,
     onInterim: sendInterim,
     onFinal: (text) => sendFinal(text, slideNumber),
   })
+  const elevenLabsSpeech = useElevenLabsSpeech({
+    enabled: speakerReady && speechEngine === 'elevenlabs',
+    speakerKey: SPEAKER_KEY,
+    onInterim: sendInterim,
+    onFinal: (text) => sendFinal(text, slideNumber),
+  })
+  const speech = speechEngine === 'elevenlabs' ? elevenLabsSpeech : browserSpeech
 
   // When this device is the lecture source, its slide changes pin the captions.
   useEffect(() => {
@@ -159,12 +169,23 @@ export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide, 
         </label>
         {speakerMode && (
           <>
+            <label className="caption-hint caption-speech-service">
+              Speech-to-text service{' '}
+              <select value={speechEngine} onChange={(event) => setSpeechEngine(event.target.value)}>
+                <option value="browser">Browser speech recognition</option>
+                <option value="elevenlabs">ElevenLabs Scribe (realtime)</option>
+              </select>
+            </label>
             <p className="caption-hint">
               {speech.supported
-                ? speech.listening
+                ? speech.error
+                  ? 'Speech-to-text is not connected.'
+                  : speech.listening
                   ? 'Listening to the microphone…'
                   : 'Starting the microphone…'
-                : 'Speech recognition isn’t available in this browser (try Chrome, Edge or Safari). You can still type test lines.'}
+                : speechEngine === 'browser'
+                  ? 'Speech recognition isn’t available in this browser (try Chrome, Edge or Safari). You can still type test lines.'
+                  : 'Microphone capture is unavailable in this browser. You can still type test lines.'}
             </p>
             <form className="caption-test" onSubmit={submitTestLine}>
               <label className="sr-only" htmlFor="caption-test-line">Test caption line</label>
@@ -179,8 +200,9 @@ export default function LiveCaptions({ lectureId, slideNumber, onLecturerSlide, 
           </>
         )}
         <p className="caption-hint">
-          LostPoint never receives or stores audio, only the text. Your browser’s speech service may process audio to
-          transcribe it.
+          {speechEngine === 'elevenlabs'
+            ? 'Microphone audio goes directly to ElevenLabs for transcription; LostPoint receives and relays only the text. ElevenLabs usage may incur charges.'
+            : 'LostPoint never receives or stores audio, only the text. Your browser’s speech service may process audio to transcribe it.'}
         </p>
       </details>
     </section>

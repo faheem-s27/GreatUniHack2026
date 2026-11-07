@@ -40,6 +40,12 @@ Open the Vite URL printed in the terminal. The backend health endpoint is at `ht
 
 `POST /api/coach` and `POST /api/library/lectures` are described in `backend/coach_api.py` and `backend/library.py`. The demo lecture uses the server's built-in demo slides.
 
+## ElevenLabs live speech-to-text
+
+To use ElevenLabs for the lecturer microphone instead of browser speech recognition, add `ELEVENLABS_API_KEY=your_key` to the ignored `backend/.env` (or your server environment), then restart FastAPI. Open a lecture in the frontend, expand **LECTURER / DEMO CONTROLS** under **Live captions**, enable **Use this device as the lecture source**, and select **ElevenLabs Scribe (realtime)**. Allow microphone access. Speak a short sentence and pause; Scribe sends partial text immediately and commits captions after a brief silence. The backend relays the resulting text to listeners and translates it as before. Turn off the lecture source to stop the microphone and Scribe session.
+
+The backend obtains a one-time Scribe token via `POST /api/captions/scribe-token`; the ElevenLabs API key never goes to the browser. Microphone audio goes from the lecturer's browser directly to ElevenLabs (the LostPoint server receives text only). Use HTTPS or localhost for browser microphone access. ElevenLabs realtime speech-to-text uses your ElevenLabs account credits. Browser speech recognition and typed test lines remain available without this key. If `SPEAKER_KEY` is configured, the token endpoint requires the same lecturer key as the caption WebSocket (the current demo sets `VITE_SPEAKER_KEY` for the browser).
+
 ## Current foundation
 
 - A responsive demo lecture, slide navigation, a demo coach with preset responses.

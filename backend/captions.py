@@ -15,10 +15,13 @@ import hmac
 import json
 import os
 
-from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import APIRouter, Header, HTTPException, Path, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from caption_hub import CaptionHub
+from config import settings
 from translation import LANGUAGES, SOURCE_LANG, GlossaryStore, Translator
 
 glossary = GlossaryStore()
@@ -29,6 +32,7 @@ SPEAKER_KEY = os.getenv("SPEAKER_KEY", "")
 LECTURE_ID = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$")
 
 router = APIRouter(prefix="/api")
+SCRIBE_TOKEN_URL = "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe"
 
 
 class GlossaryBody(BaseModel):
@@ -52,6 +56,28 @@ def captions_status():
         "model": translator.model,
         "rooms": {rid: len(room.members) for rid, room in hub.rooms.items()},
     }
+
+
+@router.post("/captions/scribe-token")
+async def scribe_token(speaker_key: str = Header(default="", alias="X-Speaker-Key")):
+    """Issue a one-time microphone token without exposing the ElevenLabs API key."""
+    if SPEAKER_KEY and not hmac.compare_digest(speaker_key.encode(), SPEAKER_KEY.encode()):
+        raise HTTPException(403, "Invalid lecturer key.")
+    api_key = settings().elevenlabs_api_key
+    if not api_key:
+        raise HTTPException(503, "Set ELEVENLABS_API_KEY in backend/.env to use ElevenLabs captions.")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(SCRIBE_TOKEN_URL, headers={"xi-api-key": api_key})
+            response.raise_for_status()
+            payload = response.json()
+            token = payload.get("token") if isinstance(payload, dict) else None
+        if not isinstance(token, str) or not token:
+            raise ValueError("Missing Scribe token")
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        # An upstream error can contain request details; never return it or the key.
+        raise HTTPException(502, "Could not start ElevenLabs transcription. Check the API key and try again.") from exc
+    return JSONResponse({"token": token}, headers={"Cache-Control": "no-store"})
 
 
 @router.websocket("/ws/captions/{lecture_id}")

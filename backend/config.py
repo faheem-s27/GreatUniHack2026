@@ -14,6 +14,7 @@ place to look when deploying.
   LOSTPOINT_SEARCH        "fts" (default, no downloads) or "chroma" (semantic, needs chromadb)
   LOSTPOINT_CHROMA_DIR    where Chroma keeps its index (default backend/chroma)
   LOSTPOINT_LOG_LEVEL     INFO by default
+  ELEVENLABS_API_KEY      server-only key for issuing realtime Scribe tokens
 """
 
 import os
@@ -33,6 +34,7 @@ class Settings:
         self.search = (env("LOSTPOINT_SEARCH") or "fts").lower()
         self.chroma_dir = env("LOSTPOINT_CHROMA_DIR") or os.path.join(HERE, "chroma")
         self.log_level = (env("LOSTPOINT_LOG_LEVEL") or "INFO").upper()
+        self.elevenlabs_api_key = env("ELEVENLABS_API_KEY") or ""
 
 
 @lru_cache

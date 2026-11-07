@@ -22,6 +22,8 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/*.py ./
+COPY backend/lostpoint ./lostpoint
+COPY backend/prompts ./prompts
 COPY --from=frontend /frontend/dist ./static
 RUN useradd --create-home --uid 1000 lostpoint && mkdir -p /data && chown lostpoint /data
 USER lostpoint
