@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from db import connect
+from events import log_event
 
 router = APIRouter(prefix="/api", tags=["lost moments"])
 
@@ -109,6 +110,8 @@ def save_moment(conn, body: LostMomentIn) -> tuple[dict, bool]:
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (moment_id, body.student_id, body.lecture_id, body.slide_number, body.topic, body.lecture_time_s, now.isoformat()),
     )
+    log_event(conn, "lost_tap", body.student_id, lecture_id=body.lecture_id, slide_number=body.slide_number,
+              ref_id=moment_id, topic=body.topic, lecture_time_s=body.lecture_time_s)
     return _to_dict(conn.execute("SELECT * FROM lost_moments WHERE id = ?", (moment_id,)).fetchone()), True
 
 

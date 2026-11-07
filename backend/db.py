@@ -17,6 +17,8 @@ Tables
   gap_moments       which lost moments are evidence for which gap
   coach_sessions    one coach conversation, with the mode decided in code
   coach_messages    the messages in it, with slide citations (coach_store.py)
+  events            every step, for debugging, tests and the success metrics (events.py)
+  handoffs          students handed to a human tutor (handoffs.py)
   lecture_attendance  who joined a live lecture, so the heatmap can show
                     "% of the room" (live.py). Captions are never stored.
 
@@ -154,6 +156,40 @@ CREATE TABLE IF NOT EXISTS coach_messages (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_coach_messages ON coach_messages(session_id, id);
+
+CREATE TABLE IF NOT EXISTS events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    at            TEXT NOT NULL,
+    kind          TEXT NOT NULL,               -- e.g. lost_tap, gap_closed, coach_mode, handoff_requested
+    student_id    TEXT,
+    course_id     TEXT,
+    lecture_id    TEXT,
+    slide_number  INTEGER,
+    ref_id        TEXT,                        -- the moment / gap / session / handoff it is about
+    detail        TEXT NOT NULL DEFAULT '{}'   -- JSON
+);
+CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind, at);
+CREATE INDEX IF NOT EXISTS idx_events_student ON events(student_id, at);
+CREATE INDEX IF NOT EXISTS idx_events_course ON events(course_id, kind);
+
+CREATE TABLE IF NOT EXISTS handoffs (
+    id               TEXT PRIMARY KEY,
+    student_id       TEXT NOT NULL,
+    course_id        TEXT NOT NULL,
+    gap_id           TEXT REFERENCES gaps(id) ON DELETE SET NULL,
+    session_id       TEXT REFERENCES coach_sessions(id) ON DELETE SET NULL,
+    reason           TEXT NOT NULL CHECK (reason IN ('repeatedly_lost', 'many_attempts', 'student_request')),
+    student_note     TEXT,
+    share_transcript INTEGER NOT NULL DEFAULT 0,
+    status           TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'claimed', 'resolved')),
+    tutor            TEXT,
+    tutor_note       TEXT,
+    created_at       TEXT NOT NULL,
+    claimed_at       TEXT,
+    resolved_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_handoffs_course ON handoffs(course_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_handoffs_student ON handoffs(student_id, created_at);
 
 CREATE TABLE IF NOT EXISTS lecture_attendance (
     lecture_id      TEXT NOT NULL,

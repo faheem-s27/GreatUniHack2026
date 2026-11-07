@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 from courses import get_slide, search_slides
 from coursework import check_question
 from db import connect
+from events import log_event
 from memory import add_attempt, open_gaps, record_gap, set_gap_status, trace
 
 router = APIRouter(prefix="/api/coach", tags=["coach storage"])
@@ -149,6 +150,8 @@ def create_session(body: SessionIn):
             (session_id, body.student_id, body.course_id, lecture_id, slide_number, body.lost_moment_id, gap_id,
              body.question, mode, locked_by, now, now),
         )
+        log_event(conn, "coach_session", body.student_id, body.course_id, lecture_id, slide_number,
+                  ref_id=session_id, mode=mode, locked_by=locked_by)
         return _session(conn, session_id)
 
 
@@ -203,17 +206,22 @@ def add_message(session_id: str, body: MessageIn):
             ).fetchone() is None:
                 raise HTTPException(422, f"Citation to a slide that does not exist: {c.lecture_id} slide {c.slide_number}")
 
+        handoff, reason = None, None
         if body.role == "student":
             if mode != "locked":
                 check = check_question(conn, row["course_id"], body.content)
                 if check["locked"]:
-                    mode, locked_by = "locked", check["matches"][0]["id"]
+                    mode, locked_by, reason = "locked", check["matches"][0]["id"], "coursework"
             if body.is_attempt:
                 attempts += 1
+                log_event(conn, "coach_attempt", body.student_id, row["course_id"], ref_id=session_id, attempt=attempts)
                 if row["gap_id"]:
-                    add_attempt(conn, row["gap_id"])
+                    handoff = add_attempt(conn, row["gap_id"], session_id)
             if mode == "guide" and attempts >= EXPLAIN_AFTER_ATTEMPTS:
-                mode = "explain"
+                mode, reason = "explain", "attempts"
+        if mode != row["mode"]:
+            log_event(conn, "coach_mode", body.student_id, row["course_id"], ref_id=session_id,
+                      **{"from": row["mode"], "to": mode, "reason": reason})
 
         # A message is stored with the mode in force when the coach must answer it.
         cur = conn.execute(
@@ -227,7 +235,7 @@ def add_message(session_id: str, body: MessageIn):
             (mode, locked_by, attempts, now, session_id),
         )
         message = conn.execute("SELECT * FROM coach_messages WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return {"message": _message_dict(message), "session": _session(conn, session_id)}
+        return {"message": _message_dict(message), "session": _session(conn, session_id), "handoff": handoff}
 
 
 @router.patch("/sessions/{session_id}")
@@ -237,6 +245,9 @@ def update_session(session_id: str, body: SessionPatch):
     with connect() as conn:
         row = _get_owned(conn, session_id, body.student_id)
         conn.execute("UPDATE coach_sessions SET status = ?, updated_at = ? WHERE id = ?", (body.status, now, session_id))
+        if resolved and row["status"] != "resolved":
+            log_event(conn, "coach_resolved", body.student_id, row["course_id"], ref_id=session_id,
+                      attempts=row["attempts"], mode=row["mode"])
         if row["gap_id"]:
             set_gap_status(conn, row["gap_id"], "closed" if resolved else "open")
         if row["lost_moment_id"]:

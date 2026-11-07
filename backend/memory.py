@@ -24,6 +24,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from db import connect
+from events import log_event
+from handoffs import supervise
 
 router = APIRouter(prefix="/api", tags=["student memory"])
 
@@ -134,18 +136,27 @@ def record_gap(
         ).rowcount
         if linked:
             conn.execute("UPDATE gaps SET times_lost = times_lost + 1 WHERE id = ?", (gap_id,))
-    return gap_dict(conn.execute("SELECT * FROM gaps WHERE id = ?", (gap_id,)).fetchone())
+    reopened = existing is not None and existing["status"] == "closed"
+    log_event(conn, "gap_reopened" if reopened else "gap_recorded", student_id, course_id, lecture_id, slide_number,
+              ref_id=gap_id, concept=concept.strip(), new=existing is None, lost_moment_id=lost_moment_id)
+    handoff = supervise(conn, gap_id)
+    return gap_dict(conn.execute("SELECT * FROM gaps WHERE id = ?", (gap_id,)).fetchone()) | {"handoff": handoff}
 
 
-def add_attempt(conn, gap_id: str) -> None:
+def add_attempt(conn, gap_id: str, session_id: str | None = None) -> dict | None:
+    """Count an honest attempt. Returns a new tutor handoff if the student is now stuck."""
     conn.execute("UPDATE gaps SET attempts = attempts + 1, last_seen_at = ? WHERE id = ?", (_now(), gap_id))
+    return supervise(conn, gap_id, session_id)
 
 
 def set_gap_status(conn, gap_id: str, status: str) -> None:
+    row = conn.execute("SELECT student_id, course_id, status FROM gaps WHERE id = ?", (gap_id,)).fetchone()
     conn.execute(
         "UPDATE gaps SET status = ?, closed_at = ? WHERE id = ?",
         (status, _now() if status == "closed" else None, gap_id),
     )
+    if row is not None and row["status"] != status:
+        log_event(conn, "gap_closed" if status == "closed" else "gap_reopened", row["student_id"], row["course_id"], ref_id=gap_id)
 
 
 def trace(conn, gap_id: str) -> list[dict]:

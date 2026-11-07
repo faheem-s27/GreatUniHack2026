@@ -8,6 +8,8 @@ from coach_store import router as coach_router
 from courses import router as courses_router
 from coursework import router as coursework_router
 from db import init_db
+from events import router as events_router
+from handoffs import router as handoffs_router
 from ingest import router as ingest_router
 from insights import router as insights_router
 from live import router as live_router
@@ -29,6 +31,8 @@ app.include_router(coursework_router)
 app.include_router(memory_router)
 app.include_router(coach_router)
 app.include_router(insights_router)
+app.include_router(handoffs_router)
+app.include_router(events_router)
 app.include_router(live_router)
 
 
