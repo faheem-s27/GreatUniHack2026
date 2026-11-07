@@ -1,0 +1,15 @@
+.chat-empty, .chat-status {
+  color: #77827a;
+  font-size: 13px;
+  margin: 20px 0;
+}
+
+.chat-error, .chat-success {
+  font-size: 12px;
+  margin: 12px 24px 0;
+}
+
+.chat-error { color: #a33c38; }
+.chat-success { color: #285740; }
+
+.chat-messages .message p { white-space: pre-wrap; }

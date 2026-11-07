@@ -117,6 +117,30 @@ For the demo, `cd backend && python seed_demo.py` adds the Calculus 1 course (`c
 
 Still to do: the AI coach itself, captions and translation (other team members), and binding student ids to student logins.
 
+## Browser coach trial
+
+Set `ANTHROPIC_API_KEY` in `backend/.env` and, if needed, set `ANTHROPIC_MODEL` to a model available to your account. Start both servers using the commands above, open the Vite URL, then select **My coach** and send a question. The browser sends messages to `POST /api/coach` through Vite's `/api` proxy. The backend returns a slide-citing reply, mode, wrong-attempt count and gap status. Each turn may make several paid API calls; the key stays in the backend and is never sent to the browser.
+
+The browser creates a temporary session ID for this page load; the backend keeps its session state in memory until it restarts. Reloading resets the visible chat and starts a new session. This demo does not identify real students or assess real coursework: only server-owned slide data controls the coach's assessed flag. Replace the demo slide source, session identity and in-memory store when the team's slide upload and accounts are ready. Replies are checked before display, so they are not streamed.
+
+## Terminal coach
+
+From `backend`, install dependencies with `pip install -r requirements.txt`. Put your Anthropic key in `backend/.env` as `ANTHROPIC_API_KEY=your_key_here` (this file is ignored by Git), then run:
+
+```sh
+python coach.py
+```
+
+The default model is `claude-sonnet-4-5`; optionally set `ANTHROPIC_MODEL` in `.env` to a model available to your account. Real use makes several paid API calls per turn. Type `/quit` to exit.
+
+For an offline demo, run `python coach.py --fake`. Ask for help, then try three distinct messages beginning with `I think`, such as `I think all variables change`. In the fake provider, `I think other variables stay constant` is treated as a correct attempt. This provider is deliberately scripted and does not assess arbitrary answers. Use `python coach.py --fake --assessed` to demonstrate that assessed material stays locked. Omit `--fake` to use Anthropic, and add `--assessed` to lock the example topic.
+
+The terminal demo's partial-derivatives slide, topic and in-memory session are placeholders. `demo_search(lecture_id, question)` returns `Slide` objects with numbers, text and an `assessed` flag; `MemoryStore.get/save` scopes state by student, lecture and concept. Replace these with the team's search and persistence implementations, and provide a trusted concept and assessment metadata from the backend. The terminal session is lost on exit. Assessed flags remain locked within a session; in a real integration the backend must reliably identify all assessed topics, rather than relying only on whichever slides search retrieves.
+
+Mode selection and slide-number citation checks are enforced in code. Attempt judgment and the additional answer-leak review use separate model calls; both can be wrong and do not guarantee that a solution can never leak. Failed response checks retry twice, then return a fixed fallback. Replies are fully generated and checked before display; no unchecked tokens are streamed. A gap is marked closed only after the attempt judge accepts a correct answer, although that judgment also requires real-world evaluation.
+
+Run offline tests with `python -m unittest test_coach test_main` from `backend`.
+
 ## Deploy
 
 One Docker image serves the API, the WebSockets and the built frontend on port 8000, with the database in a `/data` volume:
