@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import './App.css'
+import LiveCaptions from './components/LiveCaptions'
 
 const slides = [
   { number: 1, title: 'The big picture', topic: 'Functions of several variables', body: 'What happens when an output depends on more than one input?' },
   { number: 2, title: 'Meet partial derivatives', topic: 'Partial derivatives', body: 'A partial derivative describes how a function changes as one variable changes, while the others stay constant.' },
   { number: 3, title: 'A closer look', topic: 'Holding variables constant', body: 'To find the partial derivative with respect to x, treat y as a constant.' },
 ]
-const initialMessages = [{ from: 'coach', text: 'Let’s work through this together. What do you think it means to hold one variable constant?' }]
+const LECTURE_ID = 'demo-calculus-week3'
+const initialMessages =[{ from: 'coach', text: 'Let’s work through this together. What do you think it means to hold one variable constant?' }]
 
 function App() {
   const [view, setView] = useState('lecture')
@@ -18,6 +20,11 @@ function App() {
   const [input, setInput] = useState('')
   const [notice, setNotice] = useState('')
   const slide = slides[slideIndex]
+
+  // Students follow the lecturer's slide when the lecture source changes it.
+  function followLecturer(number) {
+    setSlideIndex(Math.min(Math.max(number, 1), slides.length) - 1)
+  }
 
   function markLost() {
     const next = [{ id: crypto.randomUUID(), slide: slide.number, topic: slide.topic, time: new Date().toISOString(), resolved: false }, ...moments]
@@ -64,7 +71,7 @@ function App() {
               <div className="slide"><div className="slide-top"><span>CALCULUS · WEEK 03</span><span>{String(slide.number).padStart(2, '0')} / 03</span></div><div className="slide-content"><span className="slide-chip">TODAY’S CONCEPT</span><h3>{slide.title}</h3><p>{slide.body}</p><div className="formula">f (x, y) <span>=</span> x² + y²</div></div><div className="slide-footer">LEARNING, ONE STEP AT A TIME <span>✳</span></div></div>
               <div className="slide-controls"><span>Slide {slide.number} of {slides.length} <span className="muted"> · {slide.topic}</span></span><div><button aria-label="Previous slide" disabled={slideIndex === 0} onClick={() => setSlideIndex(slideIndex - 1)}>←</button><button aria-label="Next slide" disabled={slideIndex === slides.length - 1} onClick={() => setSlideIndex(slideIndex + 1)}>→</button></div></div>
             </section><aside className="right-column"><section className="card lost-card"><div className="sparkle">✳</div><span className="section-kicker">A LITTLE LOST?</span><h2>It happens to<br />everyone.</h2><p>Save this moment and come back to it when you’re ready. No raised hands required.</p><button className="primary-button" onClick={markLost}>⌁ &nbsp; I’m lost <span>→</span></button><div className="private-note">♡ &nbsp; Just for you, always private</div>{notice && <p className="success" role="status">{notice}</p>}</section>
-              <section className="card captions-card"><div className="card-line"><div><span className="section-kicker">FOLLOW ALONG</span><h3>Live captions</h3></div><span className="caption-icon">“ ”</span></div><div className="caption-placeholder">Captions will appear here when a live lecture is connected.</div><div className="caption-foot"><span>◉ &nbsp; English</span><span>Coming soon</span></div></section></aside></div>
+              <LiveCaptions lectureId={LECTURE_ID} slideNumber={slide.number} onLecturerSlide={followLecturer} /></aside></div>
             <section className="bottom-banner"><div className="banner-icon">✧</div><div><strong>Understanding takes practice.</strong><p>Your personal coach is here to help you find your own way through.</p></div><button onClick={() => setView('coach')}>Meet your coach <span>→</span></button></section>
           </>}
           {view === 'moments' && <section className="secondary-page"><div className="eyebrow">YOUR LEARNING JOURNEY</div><h1>Your lost moments<span className="accent">.</span></h1><p>Little reminders that you’re learning something new.</p><div className="card list-card">{moments.length === 0 ? <div className="empty"><div className="sparkle">✳</div><h2>Nothing saved yet</h2><p>When something doesn’t quite click, save the slide and revisit it here.</p><button className="text-button" onClick={() => setView('lecture')}>Go to lecture →</button></div> : moments.map((moment) => <div className="moment" key={moment.id}><div className="moment-number">{String(moment.slide).padStart(2, '0')}</div><div><strong>{moment.topic}</strong><p>Slide {moment.slide} · {new Date(moment.time).toLocaleString()}</p></div><button onClick={() => { setSlideIndex(moment.slide - 1); setMessages(initialMessages); setView('coach') }}>Explore →</button><button onClick={() => toggleMoment(moment.id)}>{moment.resolved ? 'Reopen' : 'Mark understood'}</button></div>)}</div></section>}
