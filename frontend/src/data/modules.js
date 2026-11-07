@@ -1,7 +1,7 @@
 // Modules and lecture PDFs are kept in this browser (IndexedDB) so they open
 // instantly and work offline. Each PDF is also sent to the server, which reads
 // its text so the coach can search it and cite its slides.
-import { uploadLecturePdf } from './api'
+import { fetchLibraryLecture, uploadLecturePdf } from './api'
 
 let database
 function db() {
@@ -51,6 +51,28 @@ export async function saveLecture(moduleId, title, file, { assessed = false } = 
     return lecture
   }).then(lecture => connectLecture(lecture.id))
 }
+
+// Check the server still has this lecture's slides. If the server was reset,
+// forget the old id so "Let the coach read it" can send the PDF again.
+// Network errors leave the lecture as it is.
+export async function checkLecture(lectureId) {
+  const state = await loadLibrary()
+  const lecture = state.lectures.find(item => item.id === lectureId)
+  if (!lecture?.serverId) return lecture
+  try {
+    await fetchLibraryLecture(lecture.serverId)
+    return lecture
+  } catch (error) {
+    if (error.status !== 404) return lecture
+  }
+  return forgetServerCopy(lectureId)
+}
+
+export const forgetServerCopy = lectureId => transaction(state => {
+  const item = state.lectures.find(value => value.id === lectureId)
+  if (item) { item.serverId = null; item.serverError = 'The server no longer has these slides.' }
+  return item
+})
 
 // Send a saved PDF to the server so the coach can read it. Safe to retry.
 export async function connectLecture(lectureId) {

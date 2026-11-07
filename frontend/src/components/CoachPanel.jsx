@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { sendCoachMessage } from '../data/coach'
+import { connectLecture } from '../data/modules'
 
 const PdfReader = lazy(() => import('./PdfReader'))
 
@@ -9,7 +10,7 @@ const MODES = {
   LOCKED: { label: 'Hints only', help: 'This looks like assessed coursework, so the coach only gives hints, never the solution.' },
 }
 
-export default function CoachPanel({ active, entryKey, point, lecture, messages, onMessages, onToggle, onNavigate, onList, onModule, onBackLecture }) {
+export default function CoachPanel({ active, entryKey, point, lecture, messages, onMessages, onToggle, onNavigate, onList, onBackLecture, onLectureUpdate }) {
   const [appliedEntry, setAppliedEntry] = useState(entryKey)
   const [reference, setReference] = useState({ lecture, page: point.page })
   const [draft, setDraft] = useState('')
@@ -18,6 +19,7 @@ export default function CoachPanel({ active, entryKey, point, lecture, messages,
   const [markBusy, setMarkBusy] = useState(false)
   const [markError, setMarkError] = useState('')
   const [pdfExpanded, setPdfExpanded] = useState(true)
+  const [connecting, setConnecting] = useState(false)
   const pending = useRef(null)
   const sendLock = useRef(false)
   const markLock = useRef(false)
@@ -31,7 +33,7 @@ export default function CoachPanel({ active, entryKey, point, lecture, messages,
     if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
   }, [messages, active, busy])
 
-  const serverLectureId = point.serverLectureId || lecture.serverId
+  const serverLectureId = lecture.serverId
   const last = [...messages].reverse().find(message => message.from === 'coach' && message.mode)
   const mode = MODES[last?.mode] || MODES.GUIDE
 
@@ -42,8 +44,17 @@ export default function CoachPanel({ active, entryKey, point, lecture, messages,
     const request = pending.current || { pointId: point.id, chatId: point.chatId, moduleId: point.moduleId, lectureId: point.lectureId, messageId: crypto.randomUUID(), text: draft.trim(), page: reference.page, serverLectureId }
     pending.current = request
     try { const next = await sendCoachMessage(request); onMessages(point.chatId, next); pending.current = null; setDraft('') }
-    catch (err) { setError(err.message) }
+    catch (err) { setError(err.message); if (err.lectureMissing) onLectureUpdate({ ...lecture, serverId: null }) }
     finally { sendLock.current = false; setBusy(false) }
+  }
+  async function reconnect() {
+    setConnecting(true); setError('')
+    try {
+      const updated = await connectLecture(lecture.lectureId)
+      if (updated?.serverId) { onLectureUpdate({ ...lecture, serverId: updated.serverId }); pending.current = null }
+      else setError(updated?.serverError || 'The server could not read this PDF.')
+    } catch (err) { setError(err.message) }
+    finally { setConnecting(false) }
   }
   async function mark() {
     if (markLock.current) return
@@ -85,7 +96,7 @@ export default function CoachPanel({ active, entryKey, point, lecture, messages,
           <span className={`coach-mode mode-${(last?.mode || 'GUIDE').toLowerCase()}`} title={mode.help}>{mode.label}</span>
           <p>{mode.help}</p>
         </div>
-        {!serverLectureId && <div className="module-error" role="status">The coach can’t read this PDF yet, so it can’t answer. Open My Modules and choose “Let the coach read it”.<button className="module-secondary" onClick={() => onModule(point.moduleId)}>Go to My Modules</button></div>}
+        {!serverLectureId && <div className="module-error" role="status">The coach can’t read this PDF yet, so it can’t answer.<button className="module-button" disabled={connecting} onClick={reconnect}>{connecting ? 'Sending the PDF…' : 'Let the coach read it'}</button></div>}
         <div ref={scroll} className="coach-messages" role="log" aria-label="Conversation history">
           {!messages.length && <p className="coach-empty">What didn’t click on page {point.page}? Tell the coach what you think it means, even if you’re unsure. It will guide you with questions and point you to the right slide.</p>}
           {messages.map(message => <article className={`coach-message ${message.from === 'you' ? 'student' : 'assistant'}`} key={message.id}>
