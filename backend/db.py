@@ -17,6 +17,8 @@ Tables
   gap_moments       which lost moments are evidence for which gap
   coach_sessions    one coach conversation, with the mode decided in code
   coach_messages    the messages in it, with slide citations (coach_store.py)
+  lecture_attendance  who joined a live lecture, so the heatmap can show
+                    "% of the room" (live.py). Captions are never stored.
 
 Every statement is CREATE ... IF NOT EXISTS, so an existing lostpoint.db
 gains the new tables on the next start without losing data.
@@ -152,6 +154,13 @@ CREATE TABLE IF NOT EXISTS coach_messages (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_coach_messages ON coach_messages(session_id, id);
+
+CREATE TABLE IF NOT EXISTS lecture_attendance (
+    lecture_id      TEXT NOT NULL,
+    student_id      TEXT NOT NULL,
+    first_joined_at TEXT NOT NULL,
+    PRIMARY KEY (lecture_id, student_id)
+);
 """
 
 

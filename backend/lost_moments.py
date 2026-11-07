@@ -80,36 +80,45 @@ def _get_owned(conn, moment_id: str, student_id: str):
     return row
 
 
+def save_moment(conn, body: LostMomentIn) -> tuple[dict, bool]:
+    """Save one tap. Returns (moment, created); created is False for a retry or a double tap.
+
+    Shared by the REST route and the live lecture WebSocket so both apply the
+    same dedupe rules.
+    """
+    now = _now()
+    if body.id:
+        existing = conn.execute("SELECT * FROM lost_moments WHERE id = ?", (body.id,)).fetchone()
+        if existing is not None:
+            if existing["student_id"] != body.student_id:
+                raise HTTPException(409, "Id already in use")
+            return _to_dict(existing), False
+
+    recent = conn.execute(
+        """SELECT * FROM lost_moments
+           WHERE student_id = ? AND lecture_id = ? AND slide_number = ? AND created_at >= ?
+           ORDER BY created_at DESC LIMIT 1""",
+        (body.student_id, body.lecture_id, body.slide_number, (now - DEDUPE_WINDOW).isoformat()),
+    ).fetchone()
+    if recent is not None:
+        return _to_dict(recent), False
+
+    moment_id = body.id or str(uuid.uuid4())
+    conn.execute(
+        """INSERT INTO lost_moments (id, student_id, lecture_id, slide_number, topic, lecture_time_s, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (moment_id, body.student_id, body.lecture_id, body.slide_number, body.topic, body.lecture_time_s, now.isoformat()),
+    )
+    return _to_dict(conn.execute("SELECT * FROM lost_moments WHERE id = ?", (moment_id,)).fetchone()), True
+
+
 @router.post("/lost-moments", status_code=201)
 def create_lost_moment(body: LostMomentIn, response: Response):
-    now = _now()
     with connect() as conn:
-        if body.id:
-            existing = conn.execute("SELECT * FROM lost_moments WHERE id = ?", (body.id,)).fetchone()
-            if existing is not None:
-                if existing["student_id"] != body.student_id:
-                    raise HTTPException(409, "Id already in use")
-                response.status_code = 200
-                return _to_dict(existing)
-
-        recent = conn.execute(
-            """SELECT * FROM lost_moments
-               WHERE student_id = ? AND lecture_id = ? AND slide_number = ? AND created_at >= ?
-               ORDER BY created_at DESC LIMIT 1""",
-            (body.student_id, body.lecture_id, body.slide_number, (now - DEDUPE_WINDOW).isoformat()),
-        ).fetchone()
-        if recent is not None:
-            response.status_code = 200
-            return _to_dict(recent)
-
-        moment_id = body.id or str(uuid.uuid4())
-        conn.execute(
-            """INSERT INTO lost_moments (id, student_id, lecture_id, slide_number, topic, lecture_time_s, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (moment_id, body.student_id, body.lecture_id, body.slide_number, body.topic, body.lecture_time_s, now.isoformat()),
-        )
-        row = conn.execute("SELECT * FROM lost_moments WHERE id = ?", (moment_id,)).fetchone()
-        return _to_dict(row)
+        moment, created = save_moment(conn, body)
+    if not created:
+        response.status_code = 200
+    return moment
 
 
 @router.get("/lost-moments")
@@ -163,22 +172,49 @@ def get_screenshot(moment_id: str, student_id: str = Query(min_length=1, max_len
     return Response(content=row["screenshot"], media_type=row["screenshot_type"], headers={"Cache-Control": "private, max-age=3600"})
 
 
+def heatmap_for(conn, lecture_id: str) -> dict:
+    """Distinct students lost per slide. Slides under the threshold are hidden.
+
+    Adds slide titles when the lecture's slides are stored, and the share of the
+    room when attendance is known (students who joined the live lecture).
+    Attendance is never smaller than the number of students who tapped, so
+    taps made outside the live room still give a sensible percentage.
+    """
+    rows = conn.execute(
+        """SELECT m.slide_number, COUNT(DISTINCT m.student_id) AS students, s.title, s.topic
+           FROM lost_moments m
+           LEFT JOIN slides s ON s.lecture_id = m.lecture_id AND s.slide_number = m.slide_number
+           WHERE m.lecture_id = ?
+           GROUP BY m.slide_number ORDER BY m.slide_number""",
+        (lecture_id,),
+    ).fetchall()
+    attended = conn.execute("SELECT COUNT(*) FROM lecture_attendance WHERE lecture_id = ?", (lecture_id,)).fetchone()[0]
+    tapped = conn.execute("SELECT COUNT(DISTINCT student_id) FROM lost_moments WHERE lecture_id = ?", (lecture_id,)).fetchone()[0]
+    room = max(attended, tapped) if attended else None
+
+    slides = []
+    for r in rows:
+        hidden = r["students"] < HEATMAP_MIN_STUDENTS
+        slides.append({
+            "slide_number": r["slide_number"],
+            "students": None if hidden else r["students"],
+            "hidden": hidden,
+            "title": r["title"],
+            "topic": r["topic"],
+            "percent_of_room": None if hidden or not room else round(100 * r["students"] / room),
+        })
+    visible = [s for s in slides if not s["hidden"]]
+    most_lost = max(visible, key=lambda s: s["students"], default=None)
+    return {
+        "lecture_id": lecture_id,
+        "min_students": HEATMAP_MIN_STUDENTS,
+        "attendance": room,
+        "most_lost_slide": most_lost["slide_number"] if most_lost else None,
+        "slides": slides,
+    }
+
+
 @router.get("/lectures/{lecture_id}/heatmap")
 def lecture_heatmap(lecture_id: str):
-    """Distinct students lost per slide. Slides under the threshold are hidden."""
     with connect() as conn:
-        rows = conn.execute(
-            """SELECT slide_number, COUNT(DISTINCT student_id) AS students
-               FROM lost_moments WHERE lecture_id = ?
-               GROUP BY slide_number ORDER BY slide_number""",
-            (lecture_id,),
-        ).fetchall()
-    slides = [
-        {
-            "slide_number": r["slide_number"],
-            "students": r["students"] if r["students"] >= HEATMAP_MIN_STUDENTS else None,
-            "hidden": r["students"] < HEATMAP_MIN_STUDENTS,
-        }
-        for r in rows
-    ]
-    return {"lecture_id": lecture_id, "min_students": HEATMAP_MIN_STUDENTS, "slides": slides}
+        return heatmap_for(conn, lecture_id)

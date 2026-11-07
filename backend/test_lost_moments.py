@@ -68,5 +68,5 @@ def test_heatmap_hides_slides_under_five_students(client):
     tap(client, student="s0", slide=14, id="repeat")  # repeat taps by one student count once
     tap(client, student="s9", slide=3)
     slides = {s["slide_number"]: s for s in client.get("/api/lectures/calc-w3/heatmap").json()["slides"]}
-    assert slides[14] == {"slide_number": 14, "students": 5, "hidden": False}
-    assert slides[3] == {"slide_number": 3, "students": None, "hidden": True}
+    assert (slides[14]["students"], slides[14]["hidden"]) == (5, False)
+    assert (slides[3]["students"], slides[3]["hidden"], slides[3]["percent_of_room"]) == (None, True, None)
