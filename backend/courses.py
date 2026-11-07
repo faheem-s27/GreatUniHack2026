@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from accounts import require_staff
+import search_index
 from db import connect
 
 router = APIRouter(prefix="/api", tags=["courses and slides"])
@@ -134,7 +135,41 @@ def _fts_query(text: str) -> str | None:
 
 
 def search_slides(conn, q: str, course_id: str | None = None, lecture_id: str | None = None, limit: int = 5) -> list[dict]:
-    """Best-matching slides for a question. Used by the coach to cite slides."""
+    """Best-matching slides for a question. Used by the coach to cite slides.
+
+    Keyword search always runs. With semantic search on (search_index.py) its
+    results are merged in; each result says how it matched: keyword, meaning or both.
+    """
+    keyword = _keyword_search(conn, q, course_id, lecture_id, limit * 3 if search_index.enabled() else limit)
+    if not search_index.enabled():
+        return [r | {"match": "keyword"} for r in keyword[:limit]]
+    semantic = search_index.semantic_hits(q, course_id, lecture_id, limit * 3)
+    by_key = {(r["lecture_id"], r["slide_number"]): r for r in keyword}
+    out = []
+    for key, how in search_index.fuse(list(by_key), semantic, limit):
+        hit = by_key.get(key) or _hit_without_snippet(conn, *key)
+        if hit:
+            out.append(hit | {"match": how})
+    return out
+
+
+def _hit_without_snippet(conn, lecture_id: str, slide_number: int) -> dict | None:
+    r = conn.execute(
+        """SELECT s.lecture_id, s.slide_number, s.title, s.topic, s.body, l.week, l.title AS lecture_title, l.course_id
+           FROM slides s JOIN lectures l ON l.id = s.lecture_id WHERE s.lecture_id = ? AND s.slide_number = ?""",
+        (lecture_id, slide_number),
+    ).fetchone()
+    if r is None:
+        return None
+    body = " ".join((r["body"] or "").split())
+    return {
+        "course_id": r["course_id"], "lecture_id": r["lecture_id"], "lecture_title": r["lecture_title"],
+        "week": r["week"], "slide_number": r["slide_number"], "title": r["title"], "topic": r["topic"],
+        "snippet": body[:160] + ("…" if len(body) > 160 else ""), "citation": citation(r["week"], r["slide_number"]),
+    }
+
+
+def _keyword_search(conn, q: str, course_id: str | None, lecture_id: str | None, limit: int) -> list[dict]:
     match = _fts_query(q)
     if match is None:
         return []
@@ -268,6 +303,7 @@ def write_slides(conn, lecture_id: str, slides: list[SlideIn]) -> None:
            ON CONFLICT(lecture_id, slide_number) DO UPDATE SET title = excluded.title, topic = excluded.topic, body = excluded.body""",
         [(lecture_id, s.slide_number, s.title, s.topic, s.body) for s in slides],
     )
+    search_index.index_lecture(conn, lecture_id)
 
 
 @router.put("/lectures/{lecture_id}/slides", dependencies=[Depends(require_staff)])

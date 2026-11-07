@@ -92,6 +92,8 @@ python ingest.py path/to/Coursework.pdf --course comp63301 --coursework de-cw3 -
 
 Search ignores filler words ("what is", "how does … work") and matches British and American spellings.
 
+**Semantic search with Chroma (optional)** (`search_index.py`): keyword search always runs. To also find slides that explain an idea in different words, run `pip install chromadb`, set `LOSTPOINT_SEARCH=chroma` and run `python search_index.py reindex` once; new and uploaded slides are then indexed automatically. Results from both searches are merged, and each result says how it matched (`"match": "keyword" | "meaning" | "both"`). The embedding model runs locally (about 80 MB, downloaded on first use). If Chroma is missing or fails, search falls back to keywords.
+
 **Live lecture** (`live.py`): one WebSocket room per lecture at `/ws/lectures/{lecture_id}?role=lecturer` or `?role=student&student_id=…` (Vite proxies `/ws`). The lecturer sends `start`, `slide` and `caption` messages. Captions are relayed and never stored. Students send `lost` to tap on the room's current slide, using the same dedupe as the REST route. Lecturers receive live `lost_count` per slide, hidden under 5 students. Attendance is stored, so the heatmap can show `percent_of_room`. Full message list in the module docstring; `GET /api/lectures/{id}/live` shows the room state.
 
 **Heatmap and insights**: the heatmap also returns slide `title`/`topic`, `attendance`, `percent_of_room` and `most_lost_slide`, and the existing fields are unchanged. `GET /api/courses/{id}/insights` covers the whole course: each lecture's most-lost slide, the most-lost slides overall, and the concepts 5+ students have gaps on.

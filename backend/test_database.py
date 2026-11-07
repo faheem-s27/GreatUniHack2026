@@ -250,3 +250,29 @@ def test_low_effort_attempts_do_not_unlock_explain(client, course):
         r = say(client, s["id"], text, is_attempt=True).json()
         assert r["message"]["is_attempt"] is False
     assert r["session"]["attempts"] == 0 and r["session"]["mode"] == "guide"
+
+
+def test_search_results_say_how_they_matched(client, course):
+    hit = client.get("/api/search", params={"q": "partial derivative", "course_id": course}).json()[0]
+    assert hit["match"] == "keyword"  # semantic search is off by default
+
+
+def test_semantic_results_are_fused_with_keyword_results(client, course, monkeypatch):
+    """Without installing Chroma: a fake semantic backend proves the merge."""
+    import search_index
+
+    monkeypatch.setattr(search_index, "enabled", lambda: True)
+    # "meaning" finds a week 2 slide ("Why rates of change?") that shares no keyword with the question.
+    monkeypatch.setattr(search_index, "semantic_hits", lambda q, c, l, n: [("calc-w2", 1), ("calc-w3", 2)])
+    hits = client.get("/api/search", params={"q": "partial derivative", "course_id": course, "limit": 3}).json()
+    by_key = {(h["lecture_id"], h["slide_number"]): h["match"] for h in hits}
+    assert hits[0]["lecture_id"] == "calc-w3" and hits[0]["slide_number"] == 2 and hits[0]["match"] == "both"
+    assert by_key[("calc-w2", 1)] == "meaning"
+    assert next(h for h in hits if (h["lecture_id"], h["slide_number"]) == ("calc-w2", 1))["snippet"]
+
+
+def test_fuse_ranks_agreement_first():
+    from search_index import fuse
+
+    ranked = fuse([("a", 1), ("b", 1)], [("b", 1), ("c", 1)], limit=3)
+    assert ranked[0] == (("b", 1), "both") and {k for k, _ in ranked} == {("a", 1), ("b", 1), ("c", 1)}
