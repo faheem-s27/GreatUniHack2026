@@ -99,11 +99,37 @@ def get_slide(conn, lecture_id: str, slide_number: int) -> dict | None:
     return _slide_dict(row, row["week"]) if row else None
 
 
+# Question and filler words. Without this, "how does resolution work" ranks
+# slides about "hard work" above the ones about resolution.
+STOPWORDS = set("""
+a about above after again all also am an and any are as at be because been before being below between both but by
+can could did do does doing done down during each few for from further get gets got had has have having he her here
+hers him his how i if in into is it its just let me mean means meaning more most my no nor not now of off on once
+only or other our out over own please really same she should so some such than that the their them then there these
+they this those through to too under until up very was we were what when where which while who whom why will with
+work works would you your explain understand understanding confused lost help tell show give example examples
+""".split())
+
+
+def _variants(word: str) -> list[str]:
+    # British and American spellings: normalisation / normalization, analyse / analyze.
+    out = [word]
+    for a, b in (("isation", "ization"), ("ise", "ize"), ("ising", "izing"), ("yse", "yze"), ("our", "or")):
+        if word.endswith(a):
+            out.append(word[: -len(a)] + b)
+        elif word.endswith(b):
+            out.append(word[: -len(b)] + a)
+    return out
+
+
 def _fts_query(text: str) -> str | None:
     # Quote every word so user text can never be read as FTS syntax; OR them so
-    # a slide matching some of the words still ranks.
-    words = re.findall(r"\w+", text.lower())[:20]
-    return " OR ".join(f'"{w}"' for w in words) if words else None
+    # a slide matching some of the words still ranks. Filler words are dropped
+    # unless nothing else is left.
+    words = re.findall(r"\w+", text.lower())[:30]
+    content = [w for w in words if w not in STOPWORDS and len(w) > 1] or words
+    terms = dict.fromkeys(v for w in content[:20] for v in _variants(w))
+    return " OR ".join(f'"{t}"' for t in terms) if terms else None
 
 
 def search_slides(conn, q: str, course_id: str | None = None, lecture_id: str | None = None, limit: int = 5) -> list[dict]:
@@ -221,26 +247,33 @@ def get_lecture(lecture_id: str):
     }
 
 
+def write_slides(conn, lecture_id: str, slides: list[SlideIn]) -> None:
+    """Replace the lecture's slide text. Images of slides that still exist are kept.
+
+    Used by the REST route and by PDF ingest (ingest.py)."""
+    numbers = [s.slide_number for s in slides]
+    if len(numbers) != len(set(numbers)):
+        raise HTTPException(422, "Duplicate slide_number")
+    get_lecture_row(conn, lecture_id)
+    if numbers:
+        conn.execute(
+            f"DELETE FROM slides WHERE lecture_id = ? AND slide_number NOT IN ({','.join('?' * len(numbers))})",
+            (lecture_id, *numbers),
+        )
+    else:
+        conn.execute("DELETE FROM slides WHERE lecture_id = ?", (lecture_id,))
+    conn.executemany(
+        """INSERT INTO slides (lecture_id, slide_number, title, topic, body) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(lecture_id, slide_number) DO UPDATE SET title = excluded.title, topic = excluded.topic, body = excluded.body""",
+        [(lecture_id, s.slide_number, s.title, s.topic, s.body) for s in slides],
+    )
+
+
 @router.put("/lectures/{lecture_id}/slides")
 def replace_slides(lecture_id: str, body: SlidesIn):
     """Replace the lecture's slide text. Images of slides that still exist are kept."""
-    numbers = [s.slide_number for s in body.slides]
-    if len(numbers) != len(set(numbers)):
-        raise HTTPException(422, "Duplicate slide_number")
     with connect() as conn:
-        get_lecture_row(conn, lecture_id)
-        if numbers:
-            conn.execute(
-                f"DELETE FROM slides WHERE lecture_id = ? AND slide_number NOT IN ({','.join('?' * len(numbers))})",
-                (lecture_id, *numbers),
-            )
-        else:
-            conn.execute("DELETE FROM slides WHERE lecture_id = ?", (lecture_id,))
-        conn.executemany(
-            """INSERT INTO slides (lecture_id, slide_number, title, topic, body) VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT(lecture_id, slide_number) DO UPDATE SET title = excluded.title, topic = excluded.topic, body = excluded.body""",
-            [(lecture_id, s.slide_number, s.title, s.topic, s.body) for s in body.slides],
-        )
+        write_slides(conn, lecture_id, body.slides)
     return get_lecture(lecture_id)
 
 
