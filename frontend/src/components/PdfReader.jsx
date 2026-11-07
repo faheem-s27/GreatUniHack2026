@@ -3,7 +3,7 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 GlobalWorkerOptions.workerSrc = workerUrl
 
-export default function PdfReader({ lecture, page, onPage, onReady, readOnly = false, onPageText }) {
+export default function PdfReader({ lecture, page, onPage, onReady, readOnly = false }) {
   const canvas = useRef(null)
   const container = useRef(null)
   const [document, setDocument] = useState(null)
@@ -36,8 +36,7 @@ export default function PdfReader({ lecture, page, onPage, onReady, readOnly = f
     async function render() {
       setRendering(true)
       try {
-        if (!Number.isInteger(page) || page < 1 || page > document.numPages) throw new Error('Page unavailable')
-        pdfPage = await document.getPage(page)
+        pdfPage = await document.getPage(Math.min(page, document.numPages))
         if (cancelled) return
         const original = pdfPage.getViewport({ scale: 1 })
         const viewport = pdfPage.getViewport({ scale: width / original.width })
@@ -50,15 +49,11 @@ export default function PdfReader({ lecture, page, onPage, onReady, readOnly = f
         renderingTask = pdfPage.render({ canvasContext: target.getContext('2d'), viewport, transform: [ratio, 0, 0, ratio, 0, 0] })
         await renderingTask.promise
         if (!cancelled) { setError(''); setRendering(false) }
-        if (onPageText) {
-          const content = await pdfPage.getTextContent().catch(() => null)
-          if (!cancelled) onPageText({ lectureId: lecture.lectureId, page, text: content?.items.map(item => item.str).join(' ') || '' })
-        }
       } catch (err) { if (!cancelled && err.name !== 'RenderingCancelledException') { setError('Unable to render this page. Retry loading the PDF.'); setRendering(false) } }
     }
     render()
     return () => { cancelled = true; renderingTask?.cancel(); if (renderingTask) renderingTask.promise.catch(() => {}).finally(() => pdfPage?.cleanup()); else pdfPage?.cleanup() }
-  }, [document, page, width, lecture.lectureId, onPageText])
+  }, [document, page, width])
   function jump(event) {
     event.preventDefault()
     const value = Number(draft)
