@@ -51,7 +51,7 @@ def test_many_attempts_in_coach_hand_off_and_response_says_so(client):
     handoffs = []
     for i in range(6):
         r = client.post(f"/api/coach/sessions/{s['id']}/messages",
-                        json={"student_id": "s1", "role": "student", "content": f"try {i}", "is_attempt": True}).json()
+                        json={"student_id": "s1", "role": "student", "content": f"maybe it is {i} times x", "is_attempt": True}).json()
         handoffs.append(r["handoff"])
     assert handoffs[:5] == [None] * 5 and handoffs[5]["reason"] == "many_attempts"
     assert handoffs[5]["session_id"] == s["id"]
@@ -88,7 +88,7 @@ def test_every_step_is_logged_in_the_student_timeline(client):
     s = client.post("/api/coach/sessions", json={"student_id": "s1", "course_id": "calc101", "lost_moment_id": m["id"],
                                                  "concept": "Partial derivatives"}).json()
     for i in range(3):
-        client.post(f"/api/coach/sessions/{s['id']}/messages", json={"student_id": "s1", "role": "student", "content": str(i), "is_attempt": True})
+        client.post(f"/api/coach/sessions/{s['id']}/messages", json={"student_id": "s1", "role": "student", "content": f"is it the slope number {i}", "is_attempt": True})
     client.patch(f"/api/coach/sessions/{s['id']}", json={"student_id": "s1", "status": "resolved"})
     kinds = [e["kind"] for e in reversed(client.get("/api/events", params={"student_id": "s1"}).json())]
     assert kinds == ["lost_tap", "gap_recorded", "coach_session", "coach_attempt", "coach_attempt", "coach_attempt",
@@ -103,7 +103,7 @@ def test_metrics_match_the_brief(client):
     g = gap(client, moment=tap(client, slide=2)["id"])
     gap(client, moment=tap(client, slide=3)["id"])
     s = client.post("/api/coach/sessions", json={"student_id": "s1", "course_id": "calc101", "concept": "Partial derivatives"}).json()
-    client.post(f"/api/coach/sessions/{s['id']}/messages", json={"student_id": "s1", "role": "student", "content": "x", "is_attempt": True})
+    client.post(f"/api/coach/sessions/{s['id']}/messages", json={"student_id": "s1", "role": "student", "content": "the slope when y stays fixed", "is_attempt": True})
     client.patch(f"/api/coach/sessions/{s['id']}", json={"student_id": "s1", "status": "resolved"})
     gap(client, moment=tap(client, slide=1)["id"])
     # s2: lost once, never coached.

@@ -7,7 +7,8 @@ these routes or functions.
 Mode rules (enforced here, whatever the prompt says):
   * guide    default. Ask first, hint, point to a slide.
   * explain  unlocks once the student has made EXPLAIN_AFTER_ATTEMPTS honest
-             attempts in the session (student messages sent with is_attempt).
+             attempts in the session (student messages sent with is_attempt that
+             pass guardrails.is_honest_attempt: "idk" or "?" do not count).
   * locked   the question, or any later student message, matches assessed
              coursework (coursework.check_question). Locked never unlocks.
 
@@ -37,6 +38,7 @@ from courses import get_slide, search_slides
 from coursework import check_question
 from db import connect
 from events import log_event
+from guardrails import is_honest_attempt
 from memory import add_attempt, open_gaps, record_gap, set_gap_status, trace
 
 router = APIRouter(prefix="/api/coach", tags=["coach storage"])
@@ -180,62 +182,73 @@ def session_context(session_id: str, student_id: str = Query(min_length=1, max_l
     """One call for the coach: the slide the student got lost on, slides matching the
     question, the student's open gaps, and the trace behind this session's gap."""
     with connect() as conn:
-        row = _get_owned(conn, session_id, student_id)
-        slide = get_slide(conn, row["lecture_id"], row["slide_number"]) if row["lecture_id"] and row["slide_number"] else None
-        query = " ".join(filter(None, [row["question"], slide and slide["topic"], slide and slide["title"]]))
-        related = search_slides(conn, query, course_id=row["course_id"]) if query else []
-        return {
-            "session": _session_dict(row),
-            "slide": slide,
-            "related_slides": related,
-            "open_gaps": open_gaps(conn, student_id, row["course_id"]),
-            "trace": trace(conn, row["gap_id"]) if row["gap_id"] else [],
-        }
+        return build_context(conn, _get_owned(conn, session_id, student_id), student_id)
+
+
+def build_context(conn, row, student_id: str) -> dict:
+    """Everything the coach needs to answer in this session."""
+    slide = get_slide(conn, row["lecture_id"], row["slide_number"]) if row["lecture_id"] and row["slide_number"] else None
+    query = " ".join(filter(None, [row["question"], slide and slide["topic"], slide and slide["title"]]))
+    related = search_slides(conn, query, course_id=row["course_id"]) if query else []
+    return {
+        "session": _session_dict(row),
+        "slide": slide,
+        "related_slides": related,
+        "open_gaps": open_gaps(conn, student_id, row["course_id"]),
+        "trace": trace(conn, row["gap_id"]) if row["gap_id"] else [],
+    }
 
 
 @router.post("/sessions/{session_id}/messages", status_code=201)
 def add_message(session_id: str, body: MessageIn):
-    now = _now()
     with connect() as conn:
-        row = _get_owned(conn, session_id, body.student_id)
-        mode, locked_by, attempts = row["mode"], row["locked_by"], row["attempts"]
+        return store_message(conn, session_id, body)
 
-        for c in body.citations:
-            if conn.execute(
-                "SELECT 1 FROM slides WHERE lecture_id = ? AND slide_number = ?", (c.lecture_id, c.slide_number)
-            ).fetchone() is None:
-                raise HTTPException(422, f"Citation to a slide that does not exist: {c.lecture_id} slide {c.slide_number}")
 
-        handoff, reason = None, None
-        if body.role == "student":
-            if mode != "locked":
-                check = check_question(conn, row["course_id"], body.content)
-                if check["locked"]:
-                    mode, locked_by, reason = "locked", check["matches"][0]["id"], "coursework"
-            if body.is_attempt:
-                attempts += 1
-                log_event(conn, "coach_attempt", body.student_id, row["course_id"], ref_id=session_id, attempt=attempts)
-                if row["gap_id"]:
-                    handoff = add_attempt(conn, row["gap_id"], session_id)
-            if mode == "guide" and attempts >= EXPLAIN_AFTER_ATTEMPTS:
-                mode, reason = "explain", "attempts"
-        if mode != row["mode"]:
-            log_event(conn, "coach_mode", body.student_id, row["course_id"], ref_id=session_id,
-                      **{"from": row["mode"], "to": mode, "reason": reason})
+def store_message(conn, session_id: str, body: MessageIn) -> dict:
+    """Store one message and apply the mode rules. Returns {message, session, handoff}."""
+    now = _now()
+    row = _get_owned(conn, session_id, body.student_id)
+    mode, locked_by, attempts = row["mode"], row["locked_by"], row["attempts"]
 
-        # A message is stored with the mode in force when the coach must answer it.
-        cur = conn.execute(
-            """INSERT INTO coach_messages (session_id, role, content, mode, is_attempt, citations, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (session_id, body.role, body.content, mode, int(body.is_attempt and body.role == "student"),
-             json.dumps([c.model_dump() for c in body.citations]), now),
-        )
-        conn.execute(
-            "UPDATE coach_sessions SET mode = ?, locked_by = ?, attempts = ?, updated_at = ? WHERE id = ?",
-            (mode, locked_by, attempts, now, session_id),
-        )
-        message = conn.execute("SELECT * FROM coach_messages WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return {"message": _message_dict(message), "session": _session(conn, session_id), "handoff": handoff}
+    for c in body.citations:
+        if conn.execute(
+            "SELECT 1 FROM slides WHERE lecture_id = ? AND slide_number = ?", (c.lecture_id, c.slide_number)
+        ).fetchone() is None:
+            raise HTTPException(422, f"Citation to a slide that does not exist: {c.lecture_id} slide {c.slide_number}")
+
+    handoff, reason, counted = None, None, False
+    if body.role == "student":
+        if mode != "locked":
+            check = check_question(conn, row["course_id"], body.content)
+            if check["locked"]:
+                mode, locked_by, reason = "locked", check["matches"][0]["id"], "coursework"
+        # Only an honest attempt counts: "idk" three times does not unlock explain mode.
+        counted = body.is_attempt and is_honest_attempt(body.content)
+        if counted:
+            attempts += 1
+            log_event(conn, "coach_attempt", body.student_id, row["course_id"], ref_id=session_id, attempt=attempts)
+            if row["gap_id"]:
+                handoff = add_attempt(conn, row["gap_id"], session_id)
+        if mode == "guide" and attempts >= EXPLAIN_AFTER_ATTEMPTS:
+            mode, reason = "explain", "attempts"
+    if mode != row["mode"]:
+        log_event(conn, "coach_mode", body.student_id, row["course_id"], ref_id=session_id,
+                  **{"from": row["mode"], "to": mode, "reason": reason})
+
+    # A message is stored with the mode in force when the coach must answer it.
+    cur = conn.execute(
+        """INSERT INTO coach_messages (session_id, role, content, mode, is_attempt, citations, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (session_id, body.role, body.content, mode, int(body.role == "student" and counted),
+         json.dumps([c.model_dump() for c in body.citations]), now),
+    )
+    conn.execute(
+        "UPDATE coach_sessions SET mode = ?, locked_by = ?, attempts = ?, updated_at = ? WHERE id = ?",
+        (mode, locked_by, attempts, now, session_id),
+    )
+    message = conn.execute("SELECT * FROM coach_messages WHERE id = ?", (cur.lastrowid,)).fetchone()
+    return {"message": _message_dict(message), "session": _session(conn, session_id), "handoff": handoff}
 
 
 @router.patch("/sessions/{session_id}")

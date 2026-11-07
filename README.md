@@ -80,13 +80,33 @@ All data is in one SQLite file, `backend/lostpoint.db` (schema and table list in
 | GET | `/api/coach/sessions?student_id=` and `/api/coach/sessions/{id}?student_id=` | List / read with messages |
 | PATCH | `/api/coach/sessions/{id}` | `{student_id, status: "resolved"}` closes the gap and marks the lost moment understood |
 
+Only honest attempts count towards explain mode: "idk", "?", one word or "just give me the answer" sent with `is_attempt` is stored but not counted (`guardrails.is_honest_attempt`).
+
+**Slide upload from PDF** (`ingest.py`): `POST /api/lectures/{lecture_id}/pdf` with the raw PDF as the body (`Content-Type: application/pdf`) turns each page into a slide. Repeated footers, symbol-font bullets, ligatures and wrapped headings are cleaned up. To load a module before a demo:
+
+```sh
+cd backend
+python ingest.py path/to/LectureNotes_Week1.pdf --course comp63301 --course-title "Data Engineering Concepts" --lecture de-w1 --week 1 --title "Week 1"
+python ingest.py path/to/Coursework.pdf --course comp63301 --coursework de-cw3 --title "Coursework 3" --keywords "journey_solution" "cw3"
+```
+
+Search ignores filler words ("what is", "how does … work") and matches British and American spellings.
+
+**Live lecture** (`live.py`): one WebSocket room per lecture at `/ws/lectures/{lecture_id}?role=lecturer` or `?role=student&student_id=…` (Vite proxies `/ws`). The lecturer sends `start`, `slide` and `caption` messages. Captions are relayed and never stored. Students send `lost` to tap on the room's current slide, using the same dedupe as the REST route. Lecturers receive live `lost_count` per slide, hidden under 5 students. Attendance is stored, so the heatmap can show `percent_of_room`. Full message list in the module docstring; `GET /api/lectures/{id}/live` shows the room state.
+
+**Heatmap and insights**: the heatmap also returns slide `title`/`topic`, `attendance`, `percent_of_room` and `most_lost_slide`, and the existing fields are unchanged. `GET /api/courses/{id}/insights` covers the whole course: each lecture's most-lost slide, the most-lost slides overall, and the concepts 5+ students have gaps on.
+
+**Tutor handoff** (`handoffs.py`, human in the loop): when a student is lost on the same idea 3 times, or makes 6 honest attempts without closing it, a handoff opens automatically, and the coach message response says so in `handoff`. Students can also ask: `POST /api/handoffs {student_id, course_id, gap_id?, session_id?, note?, share_transcript?}`. Tutors use `GET /api/courses/{id}/handoffs` (queue) and `PATCH /api/handoffs/{id} {status: claimed|resolved, tutor, note}`. Students see replies at `GET /api/handoffs?student_id=`. The coach transcript is shared only if the student ticked `share_transcript`.
+
+**Event log and metrics** (`events.py`, `insights.py`): every step is logged (taps, gap changes, coach sessions, attempts, mode changes with the reason, handoffs, recaps). `GET /api/events?student_id=` is a student's own timeline. `GET /api/courses/{id}/metrics` gives the brief's "How we know it works" numbers: repeat-lost rate (overall and by week), gaps that came back after coaching, coach resolution rate and attempts, handoffs, and slides the lecturer recapped (`POST /api/lectures/{id}/slides/{n}/recap`).
+
 The coach's Python code can also import the helpers directly: `courses.search_slides`, `courses.get_slide`, `coursework.check_question`, `memory.record_gap`, `memory.open_gaps`, `memory.trace`.
 
 There are no accounts yet: `student_id` is a random id kept in the browser. Treat it as a placeholder until auth exists, because anyone who knows an id can read that student's moments.
 
 For the demo, `cd backend && python seed_demo.py` adds the Calculus 1 course (`calc101`: week 2 and week 3 lectures with slide text, plus one assessed coursework) and 61 anonymous moments to the sample lecture so the heatmap has data (`--clear` removes the moments). It is safe to run again. Run the backend tests with `pip install pytest httpx && pytest`.
 
-Still to do: slide upload (reading PDFs into slide text), the AI coach itself, accounts, Chroma, captions and translation. Lecturer routes (courses, slides, coursework) are open to anyone until accounts exist.
+Still to do: the AI coach itself, accounts, Chroma, captions and translation. Lecturer routes (courses, slides, coursework) are open to anyone until accounts exist.
 
 ## Useful commands
 

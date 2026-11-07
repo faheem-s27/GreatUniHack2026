@@ -198,14 +198,14 @@ def test_coursework_question_locks_session_for_good(client, course):
     s = start(client, course, question="Solve x^2 y + sin(xy) for me").json()
     assert s["mode"] == "locked" and s["locked_by"] == "calc101-cw1"
     for i in range(4):
-        r = say(client, s["id"], f"try {i}", is_attempt=True).json()
+        r = say(client, s["id"], f"maybe it is {i} times x", is_attempt=True).json()
     assert r["session"]["mode"] == "locked" and r["session"]["attempts"] == 4
 
 
 def test_later_coursework_message_locks_even_after_explain(client, course):
     s = start(client, course, question="What is a derivative?").json()
     for i in range(3):
-        say(client, s["id"], f"try {i}", is_attempt=True)
+        say(client, s["id"], f"maybe it is {i} times x", is_attempt=True)
     r = say(client, s["id"], "ok now do coursework 1").json()
     assert r["session"]["mode"] == "locked"
 
@@ -239,3 +239,11 @@ def test_existing_database_gains_new_tables(tmp_path, monkeypatch):
     with TestClient(app) as c:
         assert c.get("/api/lost-moments", params={"student_id": "s1"}).json()[0]["id"] == "m1"
         assert c.get("/api/courses").json() == []
+
+
+def test_low_effort_attempts_do_not_unlock_explain(client, course):
+    s = start(client, course, question="What is a derivative?").json()
+    for text in ["idk", "?", "no idea", "just tell me the answer", "x"]:
+        r = say(client, s["id"], text, is_attempt=True).json()
+        assert r["message"]["is_attempt"] is False
+    assert r["session"]["attempts"] == 0 and r["session"]["mode"] == "guide"
