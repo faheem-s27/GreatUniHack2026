@@ -32,6 +32,14 @@ npm run dev
 
 Open the Vite URL printed in the terminal. The backend health endpoint is at `http://127.0.0.1:8000/api/health`, and API documentation is at `/docs`. Vite proxies `/api` requests to the backend during development.
 
+## The coach on your own slides
+
+1. Copy `backend/.env.example` to `backend/.env` and set `ANTHROPIC_API_KEY`. With no key, start the backend with `LOSTPOINT_COACH_PROVIDER=fake` to use Stephanie's scripted offline coach. Its replies are labelled "Offline demo coach".
+2. In **My Modules**, upload a lecture PDF. It shows "✓ Coach can read it" once the server has read its text. Tick "assessed coursework" for coursework PDFs, so the coach only gives hints.
+3. Open the lecture, go to a page and press **I'm lost**. Ask the coach a question. It searches only that lecture's slides, cites real slide numbers (click a citation to open that page), and switches between Guide, Explain and Hints only on the server.
+
+`POST /api/coach` and `POST /api/library/lectures` are described in `backend/coach_api.py` and `backend/library.py`. The demo lecture uses the server's built-in demo slides.
+
 ## Current foundation
 
 - A responsive demo lecture, slide navigation, a demo coach with preset responses.
