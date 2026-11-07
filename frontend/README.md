@@ -117,3 +117,15 @@ This iteration is an explicit simple local demo: AI chat and teaching modes
 are not connected. It adds no PDF text extraction, AI source generation,
 teaching assessment, audio capability or backend API. Messages remain in the
 existing IndexedDB pointChats store and no server success is claimed.
+
+## Lecture Insights
+
+Lecture Insights is a single chart, opened manually from the lecturer navigation.
+No statistics API exists, so `src/data/insights.js` explicitly assigns the
+existing three-slide Introduction to Calculus demo and illustrative Sample data.
+It does not read student identities, chats or other lectures. Counts represent
+cumulative Lost Point events; resolving a point does not subtract an event.
+The chart supports zero-based integer ticks, tied maximum highlights, hover,
+click and keyboard inspection, and horizontal scrolling on narrow screens.
+A null/hidden source count is displayed as Hidden, never converted to zero.
+No backend, privacy policy or interface contract has been changed.
