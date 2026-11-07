@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { connectLecture, createModule, loadLibrary, saveLecture } from '../data/modules'
+import { checkLecture, connectLecture, createModule, loadLibrary, saveLecture } from '../data/modules'
 const sizeLabel = size => size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`
 export default function Modules({ onOpen, onMoments, requestedModule }) {
   const [library, setLibrary] = useState(null)
@@ -23,7 +23,7 @@ export default function Modules({ onOpen, onMoments, requestedModule }) {
   async function reload() {
     try { setLibrary(await loadLibrary()); setError('') } catch (err) { setError(err.message) }
   }
-  useEffect(() => { let cancelled = false; loadLibrary().then(value => { if (!cancelled) setLibrary(value) }).catch(err => { if (!cancelled) setError(err.message) }); const opened = urls.current; return () => { cancelled = true; opened.forEach(URL.revokeObjectURL) } }, [])
+  useEffect(() => { let cancelled = false; loadLibrary().then(async value => { if (!cancelled) setLibrary(value); const checked = await Promise.all(value.lectures.filter(item => item.serverId).map(item => checkLecture(item.id).catch(() => item))); if (!cancelled && checked.some(item => item && !item.serverId)) setLibrary(await loadLibrary()) }).catch(err => { if (!cancelled) setError(err.message) }); const opened = urls.current; return () => { cancelled = true; opened.forEach(URL.revokeObjectURL) } }, [])
   if (requestedModule !== appliedEntry) {
     setAppliedEntry(requestedModule)
     if (requestedModule?.moduleId) {

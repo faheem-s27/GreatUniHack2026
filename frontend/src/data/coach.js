@@ -1,5 +1,5 @@
 import { askCoach } from './api'
-import { transaction } from './modules'
+import { forgetServerCopy, transaction } from './modules'
 
 // Ask the coach about a Lost Point and keep the conversation on this device.
 // The coach reads the lecture's slides on the server; the API key never reaches the browser.
@@ -15,7 +15,18 @@ export async function sendCoachMessage({ pointId, chatId, moduleId, lectureId, m
   })
   if (existing.some(item => item.id === messageId)) return [...existing]
 
-  const reply = await askCoach({ lectureId: serverLectureId, slideNumber: page, message: content })
+  let reply
+  try {
+    reply = await askCoach({ lectureId: serverLectureId, slideNumber: page, message: content })
+  } catch (error) {
+    if (error.status === 404) {
+      await forgetServerCopy(lectureId)
+      const lost = new Error('The server no longer has these slides (it may have been reset). Choose “Let the coach read it” to send the PDF again, then ask once more.')
+      lost.lectureMissing = true
+      throw lost
+    }
+    throw error
+  }
   const time = new Date().toISOString()
   return transaction(state => {
     const chats = state.pointChats ||= {}

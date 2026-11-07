@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { findLecture, loadLectureData, saveLostPoint, updatePoint } from '../data/lecture'
-import { connectLecture } from '../data/modules'
+import { checkLecture, connectLecture } from '../data/modules'
 import CoachList from './CoachList'
 import CoachPanel from './CoachPanel'
 import LiveCaptions from './LiveCaptions'
@@ -69,6 +69,15 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
     return () => { cancelled = true }
   }, [view])
   useEffect(() => { onCountChange(data.points.filter(item => !item.resolved).length) }, [data.points, onCountChange])
+  // The server may have been reset since this PDF was sent: check, so the UI never claims the coach can read it when it can't.
+  const lectureServerId = lecture?.serverId
+  useEffect(() => {
+    if (!currentId || !lectureServerId) return
+    let cancelled = false
+    checkLecture(currentId).then(item => { if (!cancelled && item && !item.serverId) onLectureUpdate({ ...lecture, serverId: null }) }).catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when a different lecture or server copy is opened
+  }, [currentId, lectureServerId])
 
   const ready = useCallback(count => setPageCounts(previous => ({ ...previous, [currentId]: count })), [currentId])
   const keepCaptions = useCallback(feed => { captionFeed.current = feed }, [])
@@ -136,7 +145,7 @@ export default function LiveWorkspace({ lecture, view, onNavigate, onOpenLecture
       </div>
     </>}
     {view === 'coach' && !coachActive && <CoachList data={data} loaded={loaded} error={readError} onRetry={reload} onExplore={explore} onModule={onModule} />}
-    {coachPoint && lecture && coachPoint.lectureId === currentId && <CoachPanel key={coachPoint.chatId} active={!!coaching} entryKey={coachEntry} point={coachPoint} lecture={lecture} messages={data.chats[coachPoint.chatId] || []} onMessages={(id, messages) => setData(previous => ({ ...previous, chats: { ...previous.chats, [id]: messages } }))} onToggle={toggle} onNavigate={onNavigate} onList={() => onCoachChange(false)} onModule={onModule} onBackLecture={item => { setPages(previous => ({ ...previous, [item.lectureId]: item.page })); onNavigate('lecture') }} />}
+    {coachPoint && lecture && coachPoint.lectureId === currentId && <CoachPanel key={coachPoint.chatId} active={!!coaching} entryKey={coachEntry} point={coachPoint} lecture={lecture} messages={data.chats[coachPoint.chatId] || []} onMessages={(id, messages) => setData(previous => ({ ...previous, chats: { ...previous.chats, [id]: messages } }))} onToggle={toggle} onNavigate={onNavigate} onList={() => onCoachChange(false)} onBackLecture={item => { setPages(previous => ({ ...previous, [item.lectureId]: item.page })); onNavigate('lecture') }} onLectureUpdate={onLectureUpdate} />}
     <LostMoments active={view === 'moments'} scope={momentScope} data={data} loaded={loaded} loadError={readError} onReload={reload} onExplore={explore} onToggle={toggle} onNavigate={onNavigate} />
   </div>
 }

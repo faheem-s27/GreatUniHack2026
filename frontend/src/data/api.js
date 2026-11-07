@@ -61,3 +61,6 @@ export function setLostMomentResolved(id, resolved) {
 
 export const fetchHeatmap = lectureId => request(`/lectures/${encodeURIComponent(lectureId)}/heatmap`)
 export const fetchLecture = lectureId => request(`/lectures/${encodeURIComponent(lectureId)}`)
+
+// Whether the server still has a PDF this browser uploaded (it may have been reset since).
+export const fetchLibraryLecture = serverId => request(`/library/lectures/${encodeURIComponent(serverId)}?student_id=${encodeURIComponent(getStudentId())}`)
