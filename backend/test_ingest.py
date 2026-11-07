@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import login_staff
+
 
 def make_pdf(pages: list[list[str]]) -> bytes:
     """A minimal valid PDF with one text line per entry, one page per list."""
@@ -45,6 +47,7 @@ def client(tmp_path, monkeypatch):
     from main import app
 
     with TestClient(app) as c:
+        login_staff(c)
         c.post("/api/courses", json={"id": "de", "title": "Data Engineering"})
         c.post("/api/courses/de/lectures", json={"id": "de-w1", "title": "Week 1", "week": 1})
         yield c

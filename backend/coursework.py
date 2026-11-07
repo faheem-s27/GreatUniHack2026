@@ -18,9 +18,10 @@ import json
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from accounts import require_staff
 from db import connect
 
 router = APIRouter(prefix="/api", tags=["coursework"])
@@ -82,14 +83,14 @@ def check_question(conn, course_id: str, text: str) -> dict:
     return {"locked": bool(matches), "matches": matches}
 
 
-@router.get("/courses/{course_id}/coursework")
+@router.get("/courses/{course_id}/coursework", dependencies=[Depends(require_staff)])
 def list_coursework(course_id: str):
     with connect() as conn:
         rows = conn.execute("SELECT * FROM coursework WHERE course_id = ? ORDER BY due_at, title", (course_id,)).fetchall()
     return [_to_dict(r) for r in rows]
 
 
-@router.post("/courses/{course_id}/coursework", status_code=201)
+@router.post("/courses/{course_id}/coursework", status_code=201, dependencies=[Depends(require_staff)])
 def upsert_coursework(course_id: str, body: CourseworkIn):
     keywords = [k.strip() for k in body.keywords if k.strip()]
     with connect() as conn:
@@ -108,7 +109,7 @@ def upsert_coursework(course_id: str, body: CourseworkIn):
         return _to_dict(conn.execute("SELECT * FROM coursework WHERE id = ?", (body.id,)).fetchone())
 
 
-@router.delete("/coursework/{coursework_id}", status_code=204)
+@router.delete("/coursework/{coursework_id}", status_code=204, dependencies=[Depends(require_staff)])
 def delete_coursework(coursework_id: str):
     with connect() as conn:
         if conn.execute("DELETE FROM coursework WHERE id = ?", (coursework_id,)).rowcount == 0:

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import login_staff
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -14,12 +16,18 @@ def client(tmp_path, monkeypatch):
 
     live.rooms.clear()
     with TestClient(app) as c:
+        login_staff(c)
         import seed_demo
         from db import connect
 
         with connect() as conn:
             seed_demo.seed_course(conn, datetime.now(timezone.utc).isoformat())
         yield c
+
+
+def lecturer_url(client):
+    token = client.headers["Authorization"].removeprefix("Bearer ")
+    return f"/ws/lectures/calc-w3?role=lecturer&token={token}"
 
 
 def receive_until(ws, kind, **match):
@@ -31,7 +39,7 @@ def receive_until(ws, kind, **match):
 
 
 def test_lecturer_drives_slides_and_captions(client):
-    with client.websocket_connect("/ws/lectures/calc-w3?role=lecturer") as lecturer, \
+    with client.websocket_connect(lecturer_url(client)) as lecturer, \
          client.websocket_connect("/ws/lectures/calc-w3?role=student&student_id=s1") as student:
         # An earlier broadcast may arrive first; the student's own join announces attendance 1.
         assert receive_until(student, "state", attendance=1, online=1)
@@ -44,7 +52,7 @@ def test_lecturer_drives_slides_and_captions(client):
 
 
 def test_student_tap_saves_on_current_slide_and_lecturer_sees_count(client):
-    with client.websocket_connect("/ws/lectures/calc-w3?role=lecturer") as lecturer:
+    with client.websocket_connect(lecturer_url(client)) as lecturer:
         lecturer.send_json({"type": "start"})
         lecturer.send_json({"type": "slide", "slide_number": 3})
         receive_until(lecturer, "slide", slide_number=3)  # the server has moved the room
@@ -77,7 +85,7 @@ def test_bad_messages_get_errors_not_disconnects(client):
         assert receive_until(student, "error")
         student.send_json({"type": "ping"})
         assert receive_until(student, "pong")
-    with client.websocket_connect("/ws/lectures/calc-w3?role=lecturer") as lecturer:
+    with client.websocket_connect(lecturer_url(client)) as lecturer:
         receive_until(lecturer, "state")
         lecturer.send_json({"type": "slide", "slide_number": "two"})
         assert receive_until(lecturer, "error")

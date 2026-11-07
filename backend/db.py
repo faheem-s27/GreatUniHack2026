@@ -26,9 +26,10 @@ Every statement is CREATE ... IF NOT EXISTS, so an existing lostpoint.db
 gains the new tables on the next start without losing data.
 """
 
-import os
 import sqlite3
 from contextlib import contextmanager
+
+from config import settings
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS lost_moments (
@@ -191,6 +192,23 @@ CREATE TABLE IF NOT EXISTS handoffs (
 CREATE INDEX IF NOT EXISTS idx_handoffs_course ON handoffs(course_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_handoffs_student ON handoffs(student_id, created_at);
 
+CREATE TABLE IF NOT EXISTS users (
+    id             TEXT PRIMARY KEY,
+    email          TEXT NOT NULL UNIQUE,
+    name           TEXT NOT NULL,
+    role           TEXT NOT NULL CHECK (role IN ('student', 'lecturer', 'tutor')),
+    password_hash  TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash  TEXT PRIMARY KEY,               -- sha256 of the token; the token itself is never stored
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_user ON auth_sessions(user_id);
+
 CREATE TABLE IF NOT EXISTS lecture_attendance (
     lecture_id      TEXT NOT NULL,
     student_id      TEXT NOT NULL,
@@ -201,7 +219,7 @@ CREATE TABLE IF NOT EXISTS lecture_attendance (
 
 
 def db_path() -> str:
-    return os.environ.get("LOSTPOINT_DB", os.path.join(os.path.dirname(__file__), "lostpoint.db"))
+    return settings().db_path
 
 
 def init_db() -> None:

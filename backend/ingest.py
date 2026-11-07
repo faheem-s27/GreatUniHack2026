@@ -26,10 +26,11 @@ import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from courses import SlideIn, get_lecture, write_slides
+from accounts import require_staff
 from db import connect, init_db
 
 router = APIRouter(prefix="/api", tags=["slide ingest"])
@@ -128,7 +129,7 @@ def ingest_pdf(conn, lecture_id: str, data: bytes) -> int:
     return len(slides)
 
 
-@router.post("/lectures/{lecture_id}/pdf")
+@router.post("/lectures/{lecture_id}/pdf", dependencies=[Depends(require_staff)])
 async def upload_pdf(lecture_id: str, request: Request):
     data = await request.body()
     if len(data) > MAX_PDF_BYTES:

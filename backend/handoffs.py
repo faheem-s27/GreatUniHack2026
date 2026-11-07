@@ -23,9 +23,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from accounts import require_staff
 from db import connect
 from events import log_event
 
@@ -129,7 +130,7 @@ def my_handoffs(student_id: str = Query(min_length=1, max_length=64)):
     return [handoff_dict(r) for r in rows]
 
 
-@router.get("/courses/{course_id}/handoffs")
+@router.get("/courses/{course_id}/handoffs", dependencies=[Depends(require_staff)])
 def tutor_queue(course_id: str, status: Literal["open", "claimed", "resolved"] | None = None):
     sql = "SELECT * FROM handoffs WHERE course_id = ?"
     params: list = [course_id]
@@ -182,7 +183,7 @@ def _with_context(conn, row) -> dict:
     return out
 
 
-@router.get("/handoffs/{handoff_id}")
+@router.get("/handoffs/{handoff_id}", dependencies=[Depends(require_staff)])
 def read_handoff(handoff_id: str):
     with connect() as conn:
         row = conn.execute("SELECT * FROM handoffs WHERE id = ?", (handoff_id,)).fetchone()
@@ -191,7 +192,7 @@ def read_handoff(handoff_id: str):
         return _with_context(conn, row)
 
 
-@router.patch("/handoffs/{handoff_id}")
+@router.patch("/handoffs/{handoff_id}", dependencies=[Depends(require_staff)])
 def update_handoff(handoff_id: str, body: HandoffPatch):
     now = _now()
     with connect() as conn:

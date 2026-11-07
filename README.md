@@ -102,11 +102,29 @@ Search ignores filler words ("what is", "how does … work") and matches British
 
 The coach's Python code can also import the helpers directly: `courses.search_slides`, `courses.get_slide`, `coursework.check_question`, `memory.record_gap`, `memory.open_gaps`, `memory.trace`.
 
-There are no accounts yet: `student_id` is a random id kept in the browser. Treat it as a placeholder until auth exists, because anyone who knows an id can read that student's moments.
+### Accounts (`backend/accounts.py`)
 
-For the demo, `cd backend && python seed_demo.py` adds the Calculus 1 course (`calc101`: week 2 and week 3 lectures with slide text, plus one assessed coursework) and 61 anonymous moments to the sample lecture so the heatmap has data (`--clear` removes the moments). It is safe to run again. Run the backend tests with `pip install pytest httpx && pytest`.
+`POST /api/auth/register {email, name, password, role?, staff_code?}`, `POST /api/auth/login {email, password}` (both return `{token, user}`), `POST /api/auth/logout`, `GET /api/auth/me`. Send `Authorization: Bearer <token>`. On the lecturer side of the live lecture socket, pass it as `?token=`.
 
-Still to do: the AI coach itself, accounts, Chroma, captions and translation. Lecturer routes (courses, slides, coursework) are open to anyone until accounts exist.
+- **Staff only** (lecturer or tutor login): creating courses, lectures and slides, PDF upload, the coursework list, course insights and metrics, recaps, the tutor queue and handoff updates, and the lecturer side of the live lecture.
+- **No login needed**: everything a student does, plus reading courses, slides, search and the anonymised heatmap, so the current frontend works unchanged. Anonymous students still use a random `student_id` from the browser. Binding `student_id` to a logged-in student is the next step.
+- **Creating staff accounts**: registering as a lecturer or tutor needs `LOSTPOINT_STAFF_CODE`. Without it, create staff on the server with `python accounts.py create-staff --email you@uni.ac.uk --name "Dr X" --role lecturer`.
+- **How credentials are stored**: passwords are hashed with scrypt, and only a hash of each login token is stored. Five failed logins within 15 minutes lock that email out for the rest of the window.
+
+For the demo, `cd backend && python seed_demo.py` adds the Calculus 1 course (`calc101`: week 2 and week 3 lectures with slide text, plus one assessed coursework) and 61 anonymous moments to the sample lecture so the heatmap has data (`--clear` removes the moments). It is safe to run again. Run the backend tests with `pip install -r requirements-dev.txt && pytest`.
+
+Still to do: the AI coach itself, captions and translation (other team members), and binding student ids to student logins.
+
+## Deploy
+
+One Docker image serves the API, the WebSockets and the built frontend on port 8000, with the database in a `/data` volume:
+
+```sh
+cp .env.example .env      # set LOSTPOINT_STAFF_CODE
+docker compose up --build
+```
+
+All settings are environment variables, listed in `backend/config.py` and `.env.example`. `GET /api/health` checks the database and is used as the container health check. Every error response has the same shape, `{"detail": "...", "status": 404}`. Validation errors add `errors: [{field, message}]`.
 
 ## Useful commands
 

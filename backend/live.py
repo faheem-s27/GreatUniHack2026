@@ -1,6 +1,6 @@
 """Live lecture connection: one WebSocket room per lecture.
 
-  WS  /ws/lectures/{lecture_id}?role=lecturer
+  WS  /ws/lectures/{lecture_id}?role=lecturer&token=...   (a lecturer or tutor login token)
   WS  /ws/lectures/{lecture_id}?role=student&student_id=...
   GET /api/lectures/{lecture_id}/live          room state over REST (for polling or a quick check)
 
@@ -47,6 +47,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from accounts import STAFF, user_for_token
 from db import connect
 from lost_moments import HEATMAP_MIN_STUDENTS, LostMomentIn, save_moment
 
@@ -192,10 +193,17 @@ async def _handle_student(room: Room, ws: WebSocket, student_id: str, msg: dict)
 
 
 @router.websocket("/ws/lectures/{lecture_id}")
-async def lecture_socket(ws: WebSocket, lecture_id: str, role: str = "student", student_id: str | None = None):
+async def lecture_socket(ws: WebSocket, lecture_id: str, role: str = "student", student_id: str | None = None,
+                         token: str | None = None):
     if role not in ("student", "lecturer") or (role == "student" and not (student_id and len(student_id) <= 64)):
         await ws.close(code=1008, reason="role must be lecturer, or student with a student_id")
         return
+    if role == "lecturer":
+        # Only staff can move the room's slides or broadcast captions.
+        user = await run_in_threadpool(user_for_token, token)
+        if user is None or user["role"] not in STAFF:
+            await ws.close(code=1008, reason="lecturer needs a staff login token")
+            return
     if len(lecture_id) > 64:
         await ws.close(code=1008, reason="lecture_id too long")
         return

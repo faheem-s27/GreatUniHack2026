@@ -11,9 +11,10 @@ Same privacy rule as the heatmap: anything counted per slide or per concept is
 only shown once HEATMAP_MIN_STUDENTS or more distinct students are in it.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from accounts import require_staff
 from db import connect
 from events import log_event
 from lost_moments import HEATMAP_MIN_STUDENTS, heatmap_for
@@ -28,7 +29,7 @@ def _course_or_404(conn, course_id: str):
     return course
 
 
-@router.get("/courses/{course_id}/insights")
+@router.get("/courses/{course_id}/insights", dependencies=[Depends(require_staff)])
 def course_insights(course_id: str, top: int = 5):
     top = max(1, min(top, 20))
     with connect() as conn:
@@ -81,7 +82,7 @@ class RecapIn(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
-@router.post("/lectures/{lecture_id}/slides/{slide_number}/recap", status_code=201)
+@router.post("/lectures/{lecture_id}/slides/{slide_number}/recap", status_code=201, dependencies=[Depends(require_staff)])
 def mark_recapped(lecture_id: str, slide_number: int, body: RecapIn | None = None):
     """The lecturer acted on the heatmap: they recapped or changed this slide."""
     with connect() as conn:
@@ -97,7 +98,7 @@ def _rate(part: int, whole: int) -> float | None:
     return round(part / whole, 3) if whole else None
 
 
-@router.get("/courses/{course_id}/metrics")
+@router.get("/courses/{course_id}/metrics", dependencies=[Depends(require_staff)])
 def course_metrics(course_id: str):
     """The brief's "How we know it works", computed from the data and the event log.
 

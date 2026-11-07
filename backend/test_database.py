@@ -8,6 +8,8 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import login_staff
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -15,6 +17,7 @@ def client(tmp_path, monkeypatch):
     from main import app
 
     with TestClient(app) as c:
+        login_staff(c)
         yield c
 
 

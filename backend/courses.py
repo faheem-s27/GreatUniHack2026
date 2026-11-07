@@ -21,9 +21,10 @@ import binascii
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
+from accounts import require_staff
 from db import connect
 
 router = APIRouter(prefix="/api", tags=["courses and slides"])
@@ -179,7 +180,7 @@ def list_courses():
     return [{"id": r["id"], "code": r["code"], "title": r["title"], "term": r["term"], "lecture_count": r["lecture_count"]} for r in rows]
 
 
-@router.post("/courses", status_code=201)
+@router.post("/courses", status_code=201, dependencies=[Depends(require_staff)])
 def upsert_course(body: CourseIn):
     with connect() as conn:
         conn.execute(
@@ -214,7 +215,7 @@ def get_course(course_id: str):
     }
 
 
-@router.post("/courses/{course_id}/lectures", status_code=201)
+@router.post("/courses/{course_id}/lectures", status_code=201, dependencies=[Depends(require_staff)])
 def upsert_lecture(course_id: str, body: LectureIn):
     with connect() as conn:
         if conn.execute("SELECT 1 FROM courses WHERE id = ?", (course_id,)).fetchone() is None:
@@ -269,7 +270,7 @@ def write_slides(conn, lecture_id: str, slides: list[SlideIn]) -> None:
     )
 
 
-@router.put("/lectures/{lecture_id}/slides")
+@router.put("/lectures/{lecture_id}/slides", dependencies=[Depends(require_staff)])
 def replace_slides(lecture_id: str, body: SlidesIn):
     """Replace the lecture's slide text. Images of slides that still exist are kept."""
     with connect() as conn:
@@ -286,7 +287,7 @@ def read_slide(lecture_id: str, slide_number: int):
     return slide
 
 
-@router.put("/lectures/{lecture_id}/slides/{slide_number}/image")
+@router.put("/lectures/{lecture_id}/slides/{slide_number}/image", dependencies=[Depends(require_staff)])
 def attach_slide_image(lecture_id: str, slide_number: int, body: ImageIn):
     header, sep, encoded = body.data_url.partition(",")
     mime = header.removeprefix("data:").removesuffix(";base64")
