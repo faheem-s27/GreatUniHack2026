@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from accounts import router as accounts_router
+from captions import router as captions_router
 from coach_store import router as coach_router
 from config import settings
 from courses import router as courses_router
@@ -82,7 +83,7 @@ async def validation_error(_request: Request, exc: RequestValidationError):
 
 
 for router in (accounts_router, lost_moments_router, courses_router, ingest_router, coursework_router, memory_router,
-               coach_router, insights_router, handoffs_router, events_router, live_router):
+               coach_router, insights_router, handoffs_router, events_router, live_router, captions_router):
     app.include_router(router)
 
 
