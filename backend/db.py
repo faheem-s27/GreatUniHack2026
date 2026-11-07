@@ -19,6 +19,8 @@ Tables
   coach_messages    the messages in it, with slide citations (coach_store.py)
   events            every step, for debugging, tests and the success metrics (events.py)
   handoffs          students handed to a human tutor (handoffs.py)
+  library_courses / library_lectures  students' own PDFs from My Modules (library.py)
+  coach_memory      the AI coach's per-student, per-lecture, per-concept state (coach_api.py)
   lecture_attendance  who joined a live lecture, so the heatmap can show
                     "% of the room" (live.py). Captions are never stored.
 
@@ -208,6 +210,27 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
     expires_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_auth_user ON auth_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS library_courses (
+    course_id   TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+    student_id  TEXT NOT NULL                -- the student who owns this "My Modules" module
+);
+
+CREATE TABLE IF NOT EXISTS library_lectures (
+    lecture_id  TEXT PRIMARY KEY REFERENCES lectures(id) ON DELETE CASCADE,
+    student_id  TEXT NOT NULL,
+    assessed    INTEGER NOT NULL DEFAULT 0,  -- uploaded as assessed coursework: coach stays LOCKED
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS coach_memory (
+    student_id   TEXT NOT NULL,
+    lecture_id   TEXT NOT NULL,
+    concept_key  TEXT NOT NULL,
+    state        TEXT NOT NULL,               -- JSON of coach.Session (mode inputs, attempts, history)
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (student_id, lecture_id, concept_key)
+);
 
 CREATE TABLE IF NOT EXISTS lecture_attendance (
     lecture_id      TEXT NOT NULL,

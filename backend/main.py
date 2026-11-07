@@ -19,6 +19,7 @@ import lostpoint.db as canvas_db
 
 from accounts import router as accounts_router
 from captions import router as captions_router
+from coach_api import router as coach_api_router
 from coach_store import router as coach_router
 from config import settings
 from courses import router as courses_router
@@ -28,6 +29,7 @@ from events import router as events_router
 from handoffs import router as handoffs_router
 from ingest import router as ingest_router
 from insights import router as insights_router
+from library import router as library_router
 from live import router as live_router
 from lostpoint.app import canvas_error_handler
 from lostpoint.canvas import CanvasError
@@ -93,8 +95,8 @@ async def validation_error(_request: Request, exc: RequestValidationError):
     return JSONResponse({"detail": detail, "status": 422, "errors": errors}, status_code=422)
 
 
-for router in (accounts_router, lost_moments_router, courses_router, ingest_router, coursework_router, memory_router,
-               coach_router, insights_router, handoffs_router, events_router, live_router, captions_router,
+for router in (accounts_router, lost_moments_router, courses_router, ingest_router, library_router, coursework_router,
+               memory_router, coach_api_router, coach_router, insights_router, handoffs_router, events_router, live_router, captions_router,
                canvas_auth_router, canvas_router):
     app.include_router(router)
 
